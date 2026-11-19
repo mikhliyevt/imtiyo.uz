@@ -45,7 +45,7 @@ export default function LanguageSwitcher({ className }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-2xl border border-white/80 bg-white/95 p-1.5 shadow-[0_20px_44px_-16px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_20px_44px_-16px_rgba(0,0,0,0.7)]">
+        <div className="absolute right-0 top-12 z-50 w-44 overflow-hidden rounded-2xl border border-slate-200/95 bg-white/95 p-1.5 shadow-[0_20px_44px_-16px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_20px_44px_-16px_rgba(0,0,0,0.7)]">
           {LANGUAGES.map((item) => {
             const active = item.code === lang;
             return (

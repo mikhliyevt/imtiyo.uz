@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   BookOpen,
@@ -8,11 +8,8 @@ import {
   Check,
   Copy,
   Edit3,
-  ExternalLink,
-  FileText,
   GraduationCap,
   Heart,
-  HelpCircle,
   LogIn,
   LogOut,
   Mail,
@@ -31,6 +28,8 @@ import AppShell from '@/components/AppShell';
 import StudentCard from '@/components/StudentCard';
 import VerificationPill from '@/components/VerificationPill';
 import VerifyModal from '@/components/VerifyModal';
+import SettingsPanel from '@/components/SettingsPanel';
+import UniversitySelect from '@/components/UniversitySelect';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
@@ -45,18 +44,37 @@ const PROFILE_TABS = [
   { id: 'status', label: 'Talabalik statusi', icon: ShieldCheck },
   { id: 'data', label: 'Mening ma’lumotlarim', icon: GraduationCap },
   { id: 'codes', label: 'Promo kodlarim', icon: Ticket },
+  { id: 'settings', label: 'Sozlamalar', icon: SettingsIcon },
 ];
+
+const VALID_TAB_IDS = new Set(PROFILE_TABS.map((t) => t.id));
 
 export default function Profile() {
   const { t } = useLang();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile, signOut, updateProfile, reload } = useStudent();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState(() =>
-    location.hash === '#codes' ? 'codes' : 'overview'
-  );
+  const resolveInitialTab = () => {
+    const qTab = searchParams.get('tab');
+    if (qTab && VALID_TAB_IDS.has(qTab)) return qTab;
+    const hTab = (location.hash || '').replace(/^#/, '');
+    if (hTab && VALID_TAB_IDS.has(hTab)) return hTab;
+    return 'overview';
+  };
+
+  const [activeTab, setActiveTabState] = useState(resolveInitialTab);
+  const setActiveTab = (nextTab) => {
+    const valid = VALID_TAB_IDS.has(nextTab) ? nextTab : 'overview';
+    setActiveTabState(valid);
+    if (valid === 'overview') {
+      setSearchParams({}, { replace: true });
+    } else {
+      setSearchParams({ tab: valid }, { replace: true });
+    }
+  };
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [codes, setCodes] = useState([]);
   const [likedCount, setLikedCount] = useState(() => api.getLikedIds().length);
@@ -78,10 +96,14 @@ export default function Profile() {
   const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
-    if (location.hash === '#codes') {
-      setActiveTab('codes');
+    const qTab = searchParams.get('tab');
+    const hTab = (location.hash || '').replace(/^#/, '');
+    if (qTab && VALID_TAB_IDS.has(qTab)) {
+      setActiveTabState(qTab);
+    } else if (hTab && VALID_TAB_IDS.has(hTab)) {
+      setActiveTabState(hTab);
     }
-  }, [location.hash]);
+  }, [searchParams, location.hash]);
 
   useEffect(() => {
     api.listUniversities().then((list) => setUniversities(list || [])).catch(() => {});
@@ -419,53 +441,18 @@ export default function Profile() {
                             {codes.length}
                           </span>
                         )}
+                        {tab.id === 'status' && profile.status === 'rejected' && (
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
+                        )}
                       </button>
                     </li>
                   );
                 })}
-
-                <li>
-                  <Link
-                    to="/settings"
-                    className="flex w-full items-center gap-2.5 rounded-full px-4 py-2.5 text-[13px] font-bold text-slate-700 transition-colors hover:bg-slate-100/80 hover:text-[#002D96] dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-sky-300"
-                  >
-                    <SettingsIcon className="h-4 w-4 shrink-0" />
-                    <span>Sozlamalar</span>
-                  </Link>
-                </li>
               </ul>
 
               <div className="my-2.5 border-t border-slate-100 dark:border-slate-800" />
 
               <ul className="space-y-1">
-                <li>
-                  <a
-                    href="/terms"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex w-full items-center justify-between gap-2 rounded-full px-4 py-2 text-[12.5px] font-bold text-slate-600 transition-colors hover:bg-slate-100/80 hover:text-[#002D96] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-sky-300"
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <FileText className="h-4 w-4 shrink-0" />
-                      <span>Foydalanish shartlari</span>
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/help"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex w-full items-center justify-between gap-2 rounded-full px-4 py-2 text-[12.5px] font-bold text-slate-600 transition-colors hover:bg-slate-100/80 hover:text-[#002D96] dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-sky-300"
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <HelpCircle className="h-4 w-4 shrink-0" />
-                      <span>Yordam (Help)</span>
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                  </a>
-                </li>
                 <li>
                   <button
                     type="button"
@@ -494,22 +481,51 @@ export default function Profile() {
                       ? 'Talabalik guvohnomasi va tasdiqlash holati'
                       : activeTab === 'data'
                         ? 'Shaxsiy, ta’lim va aloqa ma’lumotlaringizni boshqaring'
-                        : 'Faollashtirilgan chegirma va promo-kodlaringiz'}
+                        : activeTab === 'settings'
+                          ? 'Ko‘rinish (tema), xavfsizlik va bildirishnoma sozlamalari'
+                          : 'Faollashtirilgan chegirma va promo-kodlaringiz'}
                 </p>
               </div>
-
-              <Link
-                to="/settings"
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3.5 py-2 text-[12px] font-bold text-[#002D96] shadow-sm transition-colors hover:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300 md:hidden"
-              >
-                <SettingsIcon className="h-3.5 w-3.5" />
-                Sozlamalar
-              </Link>
             </div>
 
             {/* TAB 1: MENING PROFILIM (OVERVIEW BENTO GRID) */}
             {activeTab === 'overview' && (
               <div className="space-y-5">
+                {profile.status === 'rejected' && (
+                  <div className="rounded-[24px] border border-rose-200 bg-rose-50/95 p-5 text-rose-800 shadow-sm dark:border-rose-500/35 dark:bg-rose-950/45 dark:text-rose-200">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-[14.5px] font-extrabold text-rose-700 dark:text-rose-300">
+                          <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+                          <span>Talabalik hujjatingiz rad etildi</span>
+                        </div>
+                        <p className="text-[13px] font-semibold">
+                          Sabab:{' '}
+                          <span className="font-extrabold">
+                            «
+                            {profile.rejection_reason ||
+                              'Hujjat talabga javob bermaydi. Iltimos, sifatliroq nusxasini qayta yuklang.'}
+                            »
+                          </span>
+                        </p>
+                        {profile.reviewed_by && (
+                          <p className="text-[11.5px] font-medium opacity-80">
+                            Tekshirdi: <strong>{profile.reviewed_by}</strong>
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => setVerifyOpen(true)}
+                        className="h-9 rounded-full bg-rose-600 px-4 text-[12px] font-bold text-white hover:bg-rose-700"
+                      >
+                        <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                        Hujjatni qayta yuklash
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
                   {/* Raqamli Talaba Kartasi */}
                   <div className="lg:col-span-7">
@@ -955,27 +971,16 @@ export default function Profile() {
                         <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
                           Oliy ta’lim muassasasi
                         </label>
-                        <select
+                        <UniversitySelect
+                          universities={filteredUniversities}
                           value={editUniversity}
-                          onChange={(e) => {
-                            setEditUniversity(e.target.value);
-                            if (e.target.value !== 'Boshqa') setEditCustomInstitution('');
+                          onChange={(val) => {
+                            setEditUniversity(val);
+                            if (val !== 'Boshqa') setEditCustomInstitution('');
                           }}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                        >
-                          <option value="">Tanlang...</option>
-                          {filteredUniversities.map((u) => {
-                            const name = typeof u === 'string' ? u : u.name;
-                            const shortName =
-                              typeof u === 'object' && u.short_name ? u.short_name : '';
-                            return (
-                              <option key={u.id || name} value={name}>
-                                {shortName ? `${shortName} — ${name}` : name}
-                              </option>
-                            );
-                          })}
-                          <option value="Boshqa">Boshqa</option>
-                        </select>
+                          placeholder="Universitetni qidiring yoki tanlang..."
+                          otherLabel="Boshqa"
+                        />
                       </div>
 
                       {editUniversity === 'Boshqa' && (
@@ -1205,30 +1210,11 @@ export default function Profile() {
               </section>
             )}
 
-            {/* MOBILDA QO'SHIMCHA HAVOLALAR VA CHIQISH */}
-            <div className="grid grid-cols-1 gap-2.5 pt-2 md:hidden">
-              <div className="grid grid-cols-2 gap-2.5">
-                <a
-                  href="/terms"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white/90 py-3 text-[12px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  <FileText className="h-3.5 w-3.5 text-[#1D6FF2]" />
-                  <span>Shartlar</span>
-                  <ExternalLink className="h-3 w-3 opacity-60" />
-                </a>
-                <a
-                  href="/help"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white/90 py-3 text-[12px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  <HelpCircle className="h-3.5 w-3.5 text-[#1D6FF2]" />
-                  <span>Yordam</span>
-                  <ExternalLink className="h-3 w-3 opacity-60" />
-                </a>
-              </div>
+            {/* TAB 5: SOZLAMALAR (PROFIL ICHIDA OCHILADI) */}
+            {activeTab === 'settings' && <SettingsPanel />}
+
+            {/* MOBILDA CHIQISH TUGMASI */}
+            <div className="pt-2 md:hidden">
               <button
                 type="button"
                 onClick={() => setShowLogoutConfirm(true)}

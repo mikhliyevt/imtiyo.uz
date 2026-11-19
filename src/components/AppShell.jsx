@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  AlertTriangle,
   Bell,
   ChevronDown,
   ChevronRight,
+  Clock,
   ExternalLink,
   Heart,
   HelpCircle,
@@ -15,9 +17,11 @@ import {
   Search,
   Send,
   Settings,
+  ShieldCheck,
   Star,
   Ticket,
   Trash2,
+  Upload,
   User,
   X,
 } from 'lucide-react';
@@ -33,22 +37,43 @@ import { api } from '@/services/api';
 import { brands as sampleBrands, offers as sampleOffers } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
-const INITIAL_NOTIFICATIONS = [
+const READ_NOTIFS_KEY = 'imtiyo_read_notifications_v1';
+const DISMISSED_REJECT_BANNER_KEY = 'imtiyo_dismissed_reject_banner_v1';
+
+const BASE_NOTIFICATIONS = [
   {
-    id: 'n-1',
+    id: 'n-welcome',
+    type: 'info',
     title: 'IMTIYO platformasiga xush kelibsiz! 🎉',
     desc: 'Talabalik guvohnomangizni tasdiqlang va 50% gacha chegirmalardan foydalaning.',
     time: 'Bugun',
-    unread: true,
   },
   {
-    id: 'n-2',
+    id: 'n-partners',
+    type: 'info',
     title: 'Yangi hamkor brendlar qo‘shildi 🔥',
     desc: 'Xarita bo‘limida o‘zingizga eng yaqin filiallarni topishingiz mumkin.',
     time: 'Kecha',
-    unread: false,
   },
 ];
+
+function readStringSet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStringSet(key, list) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...new Set(list.map(String))]));
+  } catch {
+    /* ignore */
+  }
+}
 
 export function openAuthPromptModal(reason = 'default') {
   window.dispatchEvent(new CustomEvent('imtiyo_open_auth_modal', { detail: { reason } }));
@@ -74,7 +99,14 @@ export default function AppShell({
   const [savedItems, setSavedItems] = useState([]);
 
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [readNotifIds, setReadNotifIds] = useState(() => readStringSet(READ_NOTIFS_KEY));
+  const [dismissedRejectKey, setDismissedRejectKey] = useState(() => {
+    try {
+      return localStorage.getItem(DISMISSED_REJECT_BANNER_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -160,71 +192,111 @@ export default function AppShell({
 
       ids.forEach((rawId) => {
         if (seenLikeIds.has(rawId)) return;
+        const isExplicitOffer = rawId.startsWith('offer:');
+        const isExplicitBrand = rawId.startsWith('brand:') || rawId.startsWith('brand-');
         const cleanId = rawId.replace(/^(brand[-:]|offer:)/, '');
 
-        const matchedBrand = mergedBrands.find(
-          (b) =>
-            String(b.id) === rawId ||
-            String(b.id) === cleanId ||
-            String(b.slug || '') === cleanId ||
-            String(b.recordId || '') === rawId
-        );
+        // 1. Avval individual chegirmalarni (offer) tekshirish
+        if (!isExplicitBrand) {
+          const matchedOffer = mergedOffers.find(
+            (o) => String(o.id) === rawId || String(o.id) === cleanId
+          );
+          if (matchedOffer) {
+            seenLikeIds.add(rawId);
+            const parentBrand = mergedBrands.find(
+              (b) => String(b.id) === String(matchedOffer.brand_id)
+            );
+            resolved.push({
+              likeId: rawId,
+              kind: 'offer',
+              offerId: matchedOffer.id,
+              title:
+                matchedOffer.title_uz ||
+                matchedOffer.title?.uz ||
+                matchedOffer.brand_name ||
+                parentBrand?.name ||
+                'Maxsus chegirma',
+              subtitle: matchedOffer.brand_name || parentBrand?.name || 'Aksiya',
+              discount:
+                matchedOffer.discount ||
+                matchedOffer.discount_label ||
+                parentBrand?.discount ||
+                '-15%',
+              slug: matchedOffer.brand_id || parentBrand?.id || '',
+              logo_url: parentBrand?.logo_url || '',
+              accent: parentBrand?.accent || '#1D6FF2',
+              monogram:
+                parentBrand?.monogram ||
+                (matchedOffer.brand_name || 'A').slice(0, 2).toUpperCase(),
+            });
+            return;
+          }
 
-        if (matchedBrand) {
-          seenLikeIds.add(rawId);
-          resolved.push({
-            likeId: rawId,
-            title: matchedBrand.name,
-            subtitle:
-              matchedBrand.tagline?.uz ||
-              matchedBrand.tagline_uz ||
-              matchedBrand.category ||
-              'Hamkor brend',
-            discount: matchedBrand.discount || matchedBrand.discount_label || '-20%',
-            slug: matchedBrand.id || matchedBrand.slug,
-            logo_url: matchedBrand.logo_url || '',
-            accent: matchedBrand.accent || matchedBrand.accent_color || '#002D96',
-            monogram:
-              matchedBrand.monogram || (matchedBrand.name || 'I').slice(0, 2).toUpperCase(),
-          });
-          return;
+          // Agar default-<brandId> chegirmasi bo'lsa
+          if (cleanId.startsWith('default-')) {
+            const targetBrandId = cleanId.replace(/^default-/, '');
+            const parentBrand = mergedBrands.find(
+              (b) => String(b.id) === targetBrandId || String(b.slug || '') === targetBrandId
+            );
+            if (parentBrand) {
+              seenLikeIds.add(rawId);
+              resolved.push({
+                likeId: rawId,
+                kind: 'offer',
+                offerId: cleanId,
+                title:
+                  parentBrand.tagline?.uz ||
+                  parentBrand.tagline_uz ||
+                  `${parentBrand.name} talaba chegirmasi`,
+                subtitle: parentBrand.name,
+                discount: parentBrand.discount || parentBrand.discount_label || '-20%',
+                slug: parentBrand.id || parentBrand.slug,
+                logo_url: parentBrand.logo_url || '',
+                accent: parentBrand.accent || '#002D96',
+                monogram:
+                  parentBrand.monogram || (parentBrand.name || 'I').slice(0, 2).toUpperCase(),
+              });
+              return;
+            }
+          }
         }
 
-        const matchedOffer = mergedOffers.find(
-          (o) => String(o.id) === rawId || String(o.id) === cleanId
-        );
-        if (matchedOffer) {
-          seenLikeIds.add(rawId);
-          const parentBrand = mergedBrands.find(
-            (b) => String(b.id) === String(matchedOffer.brand_id)
+        // 2. Keyin brend darajasidagi saqlanganlarni tekshirish
+        if (!isExplicitOffer) {
+          const matchedBrand = mergedBrands.find(
+            (b) =>
+              String(b.id) === rawId ||
+              String(b.id) === cleanId ||
+              String(b.slug || '') === cleanId ||
+              String(b.recordId || '') === rawId
           );
-          resolved.push({
-            likeId: rawId,
-            title:
-              matchedOffer.title_uz ||
-              matchedOffer.title?.uz ||
-              matchedOffer.brand_name ||
-              parentBrand?.name ||
-              'Maxsus chegirma',
-            subtitle: matchedOffer.brand_name || parentBrand?.name || 'Aksiya',
-            discount:
-              matchedOffer.discount ||
-              matchedOffer.discount_label ||
-              parentBrand?.discount ||
-              '-15%',
-            slug: matchedOffer.brand_id || parentBrand?.id || '',
-            logo_url: parentBrand?.logo_url || '',
-            accent: parentBrand?.accent || '#1D6FF2',
-            monogram:
-              parentBrand?.monogram ||
-              (matchedOffer.brand_name || 'A').slice(0, 2).toUpperCase(),
-          });
-          return;
+
+          if (matchedBrand) {
+            seenLikeIds.add(rawId);
+            resolved.push({
+              likeId: rawId,
+              kind: 'brand',
+              title: matchedBrand.name,
+              subtitle:
+                matchedBrand.tagline?.uz ||
+                matchedBrand.tagline_uz ||
+                matchedBrand.category ||
+                'Hamkor brend',
+              discount: matchedBrand.discount || matchedBrand.discount_label || '-20%',
+              slug: matchedBrand.id || matchedBrand.slug,
+              logo_url: matchedBrand.logo_url || '',
+              accent: matchedBrand.accent || matchedBrand.accent_color || '#002D96',
+              monogram:
+                matchedBrand.monogram || (matchedBrand.name || 'I').slice(0, 2).toUpperCase(),
+            });
+            return;
+          }
         }
 
         seenLikeIds.add(rawId);
         resolved.push({
           likeId: rawId,
+          kind: isExplicitOffer ? 'offer' : 'brand',
           title: cleanId.toUpperCase(),
           subtitle: 'Saqlangan chegirma',
           discount: 'Maxsus taklif',
@@ -275,9 +347,85 @@ export default function AppShell({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const notifications = useMemo(() => {
+    const list = [];
+
+    if (profile?.signedIn) {
+      if (profile.status === 'rejected') {
+        const reasonText =
+          (profile.rejection_reason || '').trim() ||
+          'Hujjat talabga javob bermaydi. Iltimos, aniqroq rasm yuklang.';
+        list.push({
+          id: `status-rejected:${profile.id}:${reasonText}:${profile.reviewed_at || ''}`,
+          type: 'rejected',
+          title: 'Talabalik hujjatingiz rad etildi',
+          desc: `Sabab: «${reasonText}»`,
+          meta: profile.reviewed_by ? `Tekshirdi: ${profile.reviewed_by}` : '',
+          time: 'Yangi',
+          actionLabel: 'Hujjatni qayta yuklash',
+          actionType: 'reupload',
+        });
+      } else if (profile.status === 'verified') {
+        list.push({
+          id: `status-verified:${profile.id}:${profile.reviewed_at || ''}`,
+          type: 'verified',
+          title: 'Talabalik statusingiz tasdiqlandi! 🎉',
+          desc: 'Endi barcha IMTIYO hamkor chegirmalari va promo-kodlaridan foydalanishingiz mumkin.',
+          meta: profile.reviewed_by ? `Tasdiqladi: ${profile.reviewed_by}` : '',
+          time: 'Faol',
+        });
+      } else if (profile.status === 'pending') {
+        list.push({
+          id: `status-pending:${profile.id}:${profile.submitted_date || ''}`,
+          type: 'pending',
+          title: 'Hujjatingiz tekshirilmoqda ⏳',
+          desc: 'Moderatorlarimiz talabalik hujjatingizni ko‘rib chiqmoqda. Natija shu yerda ko‘rinadi.',
+          time: 'Jarayonda',
+        });
+      }
+    }
+
+    BASE_NOTIFICATIONS.forEach((item) => list.push(item));
+
+    return list.map((item) => ({
+      ...item,
+      unread: !readNotifIds.includes(item.id),
+    }));
+  }, [
+    profile?.signedIn,
+    profile?.id,
+    profile?.status,
+    profile?.rejection_reason,
+    profile?.reviewed_by,
+    profile?.reviewed_at,
+    profile?.submitted_date,
+    readNotifIds,
+  ]);
+
   const unreadCount = notifications.filter((n) => n.unread).length;
+  const hasUnreadRejection = notifications.some((n) => n.type === 'rejected' && n.unread);
+
+  const rejectionBannerKey =
+    profile?.signedIn && profile?.status === 'rejected'
+      ? `${profile.id}:${profile.rejection_reason || ''}:${profile.reviewed_at || ''}`
+      : '';
+  const showRejectionBanner =
+    Boolean(rejectionBannerKey) && dismissedRejectKey !== rejectionBannerKey;
+
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    const nextIds = [...new Set([...readNotifIds, ...notifications.map((n) => n.id)])];
+    setReadNotifIds(nextIds);
+    writeStringSet(READ_NOTIFS_KEY, nextIds);
+  };
+
+  const dismissRejectionBanner = () => {
+    if (!rejectionBannerKey) return;
+    setDismissedRejectKey(rejectionBannerKey);
+    try {
+      localStorage.setItem(DISMISSED_REJECT_BANNER_KEY, rejectionBannerKey);
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleConfirmLogout = async () => {
@@ -296,7 +444,7 @@ export default function AppShell({
     .toUpperCase();
 
   const renderSearchDropdown = () => (
-    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[420px] overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-3 shadow-[0_28px_70px_-15px_rgba(8,18,58,0.28)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_28px_70px_-15px_rgba(0,0,0,0.75)]">
+    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[420px] overflow-y-auto rounded-[24px] border border-slate-200/95 bg-white/95 p-3 shadow-[0_28px_70px_-15px_rgba(8,18,58,0.28)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_28px_70px_-15px_rgba(0,0,0,0.75)]">
       <p className="px-3 pb-2 pt-1 text-[12px] font-extrabold text-[#08123A] dark:text-slate-100">
         {searchQuery.trim() ? 'Qidiruv natijalari' : 'Tavsiya etilganlar (Recommended)'}
       </p>
@@ -354,7 +502,7 @@ export default function AppShell({
       {/* =========================================================
           GLASSMORPHISM HEADER (Logo oval ichida + barcha elementlar glass)
       ========================================================= */}
-      <header className="sticky top-0 z-40 border-b border-white/60 bg-white/70 backdrop-blur-2xl shadow-[0_8px_32px_-14px_rgba(0,45,150,0.14)] dark:border-white/10 dark:bg-[#0B1228]/75 dark:shadow-[0_10px_34px_-14px_rgba(0,0,0,0.6)]">
+      <header className="sticky top-0 z-40 border-b border-slate-200/85 bg-white/75 backdrop-blur-2xl shadow-[0_8px_32px_-14px_rgba(0,45,150,0.14)] dark:border-white/10 dark:bg-[#0B1228]/75 dark:shadow-[0_10px_34px_-14px_rgba(0,0,0,0.6)]">
         <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-2.5 px-3.5 py-2.5 sm:gap-3.5 sm:px-6 md:px-8">
           {/* LOGO OVAL ICHIDA (Glassmorphism) */}
           <Link
@@ -437,12 +585,19 @@ export default function AppShell({
               >
                 <Bell className="h-[18px] w-[18px] text-current" />
                 {unreadCount > 0 && (
-                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#1D6FF2] ring-2 ring-white dark:bg-sky-400 dark:ring-[#0B1228]" />
+                  <span
+                    className={cn(
+                      'absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full border border-white px-1 text-[9.5px] font-extrabold text-white shadow-sm dark:border-[#0B1228]',
+                      hasUnreadRejection ? 'animate-pulse bg-rose-500' : 'bg-[#1D6FF2]'
+                    )}
+                  >
+                    {unreadCount}
+                  </span>
                 )}
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-72 sm:w-80 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-3.5 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 overflow-hidden rounded-[24px] border border-slate-200/95 bg-white/95 p-3.5 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
                   <div className="mb-2.5 flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
                     <span className="text-[13px] font-extrabold text-[#08123A] dark:text-white">
                       Bildirishnomalar
@@ -451,23 +606,89 @@ export default function AppShell({
                       Ilova xabarlari
                     </span>
                   </div>
-                  <ul className="space-y-2">
+                  <ul className="max-h-80 space-y-2 overflow-y-auto">
                     {notifications.map((n) => (
                       <li
                         key={n.id}
-                        className="rounded-2xl border border-slate-100 bg-slate-50/80 p-2.5 text-[12px] dark:border-slate-800 dark:bg-slate-800/70"
+                        className={cn(
+                          'rounded-2xl border p-3 text-[12px]',
+                          n.type === 'rejected'
+                            ? 'border-rose-200 bg-rose-50/90 dark:border-rose-500/35 dark:bg-rose-950/45'
+                            : n.type === 'verified'
+                              ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-500/30 dark:bg-emerald-950/35'
+                              : n.type === 'pending'
+                                ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-950/35'
+                                : 'border-slate-100 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-800/70'
+                        )}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="font-extrabold text-[#08123A] dark:text-slate-100">
-                            {n.title}
-                          </p>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            {n.type === 'rejected' && (
+                              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                            )}
+                            {n.type === 'verified' && (
+                              <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                            )}
+                            {n.type === 'pending' && (
+                              <Clock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            )}
+                            <p
+                              className={cn(
+                                'font-extrabold',
+                                n.type === 'rejected'
+                                  ? 'text-rose-700 dark:text-rose-300'
+                                  : n.type === 'verified'
+                                    ? 'text-emerald-800 dark:text-emerald-300'
+                                    : 'text-[#08123A] dark:text-slate-100'
+                              )}
+                            >
+                              {n.title}
+                            </p>
+                          </div>
                           <span className="shrink-0 text-[10px] font-semibold text-slate-400">
                             {n.time}
                           </span>
                         </div>
-                        <p className="mt-1 text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-300">
+                        <p
+                          className={cn(
+                            'mt-1 text-[12px] leading-relaxed',
+                            n.type === 'rejected'
+                              ? 'font-bold text-rose-700 dark:text-rose-200'
+                              : 'text-slate-600 dark:text-slate-300'
+                          )}
+                        >
                           {n.desc}
                         </p>
+                        {n.meta && (
+                          <p className="mt-1 text-[10.5px] font-semibold text-slate-500 dark:text-slate-400">
+                            {n.meta}
+                          </p>
+                        )}
+                        {n.actionType === 'reupload' && (
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNotifOpen(false);
+                                setVerifyModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1.5 text-[11px] font-extrabold text-white shadow-sm hover:bg-rose-700"
+                            >
+                              <Upload className="h-3 w-3" />
+                              {n.actionLabel}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNotifOpen(false);
+                                navigate('/profile?tab=status');
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-slate-900 dark:text-rose-300"
+                            >
+                              Statusni ko‘rish
+                            </button>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -507,7 +728,7 @@ export default function AppShell({
                 </button>
 
                 {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.4)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
+                  <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[24px] border border-slate-200/95 bg-white/95 p-2 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.4)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
                     <div className="mb-1.5 flex items-center gap-2.5 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
                       <span className="grid h-8 w-8 min-w-[32px] max-w-[32px] shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#002D96] to-[#00A9FF] text-[11.5px] font-extrabold text-white">
                         {profile.avatar_url ? (
@@ -548,12 +769,12 @@ export default function AppShell({
                         type="button"
                         onClick={() => {
                           setUserMenuOpen(false);
-                          navigate('/settings');
+                          navigate('/profile?tab=settings');
                         }}
                         className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <Settings className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
-                        <span>Profil sozlamalari</span>
+                        <span>Sozlamalar</span>
                       </button>
 
                       <button
@@ -668,10 +889,55 @@ export default function AppShell({
       </header>
 
       {/* =========================================================
-          GLOBAL YUQORI GRADIENT + ASOSIY KONTENT + UNIFIED BREADCRUMB
+          GLOBAL YUQORI GRADIENT + RAD ETILGAN HUJJAT XABARNOMASI + ASOSIY KONTENT
       ========================================================= */}
       <div className="relative flex-1">
         <PageTopGradient />
+
+        {showRejectionBanner && (
+          <div className="relative z-20 mx-auto w-full max-w-[1440px] px-4 pt-3.5 md:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/95 px-4 py-3 text-rose-800 shadow-sm backdrop-blur-md dark:border-rose-500/35 dark:bg-rose-950/60 dark:text-rose-200">
+              <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+                <div className="min-w-0 text-[12.5px]">
+                  <p className="font-extrabold">
+                    Talabalik hujjatingiz rad etildi
+                  </p>
+                  <p className="mt-0.5 font-semibold leading-snug">
+                    Sabab:{' '}
+                    <span className="font-extrabold">
+                      «{profile.rejection_reason || 'Hujjat talabga javob bermaydi. Iltimos, aniqroq rasm yuklang.'}»
+                    </span>
+                    {profile.reviewed_by && (
+                      <span className="ml-2 text-[11px] font-medium opacity-75">
+                        ({profile.reviewed_by})
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setVerifyModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3.5 py-1.5 text-[11.5px] font-extrabold text-white shadow-sm transition-colors hover:bg-rose-700"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Qayta yuklash
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissRejectionBanner}
+                  aria-label="Yopish"
+                  className="grid h-7 w-7 place-items-center rounded-full text-rose-600/80 hover:bg-rose-200/60 dark:text-rose-300 dark:hover:bg-rose-900/60"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <main className="relative z-10 mx-auto w-full max-w-[1440px] px-4 pt-5 md:px-8">
           {breadcrumbs !== false && Array.isArray(breadcrumbs) && (
@@ -984,7 +1250,12 @@ export default function AppShell({
                       type="button"
                       onClick={() => {
                         setSavedModalOpen(false);
-                        if (item.slug) navigate(`/brand/${item.slug}`);
+                        if (item.slug) {
+                          const targetUrl = item.offerId
+                            ? `/brand/${item.slug}?offer=${encodeURIComponent(item.offerId)}`
+                            : `/brand/${item.slug}`;
+                          navigate(targetUrl);
+                        }
                       }}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >

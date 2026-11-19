@@ -3,10 +3,21 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Flame, Heart } from 'lucide-react';
 import AppShell, { openAuthPromptModal } from '@/components/AppShell';
 import CategoryPills from '@/components/CategoryPills';
+import CardImageBlur from '@/components/CardImageBlur';
 import { HomeGridSkeleton } from '@/components/PageSkeleton';
 import { useStudent } from '@/lib/StudentContext';
 import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { cn } from '@/lib/utils';
+
+const CLONES_BEFORE = 2;
+const CLONES_AFTER = 3;
+
+function getViewportMode() {
+  if (typeof window === 'undefined') return 'lg';
+  if (window.innerWidth >= 1024) return 'lg';
+  if (window.innerWidth >= 768) return 'md';
+  return 'sm';
+}
 
 export default function Home() {
   const { profile } = useStudent();
@@ -30,11 +41,26 @@ export default function Home() {
     [setSearchParams]
   );
 
-  // Slayd indeksi, yo'nalishi va hover pauzasi
-  const [slideIdx, setSlideIdx] = useState(0);
-  const [slideDir, setSlideDir] = useState('next');
+  // Slayd karusel holati (silliq chap/o'ng surish animatsiyasi + cheksiz aylanish)
+  const [viewportMode, setViewportMode] = useState(getViewportMode);
+  const [trackPos, setTrackPos] = useState(CLONES_BEFORE);
+  const [animateTrack, setAnimateTrack] = useState(true);
   const [sliderPaused, setSliderPaused] = useState(false);
+  const [dragOffsetPx, setDragOffsetPx] = useState(0);
+  const touchStartXRef = useRef(null);
+  const trackPosRef = useRef(CLONES_BEFORE);
+  const snapTimeoutRef = useRef(null);
   const partnersScrollRef = useRef(null);
+
+  useEffect(() => {
+    const onResize = () => setViewportMode(getViewportMode());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    trackPosRef.current = trackPos;
+  }, [trackPos]);
 
   useEffect(() => {
     let mounted = true;
@@ -64,7 +90,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    setSlideIdx(0);
+    setAnimateTrack(false);
+    setTrackPos(CLONES_BEFORE);
+    trackPosRef.current = CLONES_BEFORE;
   }, [category]);
 
   const activeCategoryObj = useMemo(
@@ -94,30 +122,119 @@ export default function Home() {
     [categoryBrands, brands]
   );
 
+  const extendedSlides = useMemo(() => {
+    const n = sliderBrands.length;
+    if (n <= 1) {
+      return sliderBrands.map((item, idx) => ({
+        item,
+        origIdx: idx,
+        slotKey: `single-${idx}-${item.id}`,
+      }));
+    }
+    const list = [];
+    for (let i = -CLONES_BEFORE; i < n + CLONES_AFTER; i++) {
+      const origIdx = ((i % n) + n) % n;
+      list.push({
+        item: sliderBrands[origIdx],
+        origIdx,
+        slotKey: `slot-${i}-${sliderBrands[origIdx].id}`,
+      });
+    }
+    return list;
+  }, [sliderBrands]);
+
+  const normalizeBoundary = useCallback(() => {
+    const n = sliderBrands.length;
+    if (n <= 1) return;
+    const cur = trackPosRef.current;
+    if (cur >= CLONES_BEFORE + n) {
+      const wrapped = CLONES_BEFORE + ((cur - CLONES_BEFORE) % n);
+      setAnimateTrack(false);
+      setTrackPos(wrapped);
+      trackPosRef.current = wrapped;
+    } else if (cur < CLONES_BEFORE) {
+      const wrapped = CLONES_BEFORE + ((((cur - CLONES_BEFORE) % n) + n) % n);
+      setAnimateTrack(false);
+      setTrackPos(wrapped);
+      trackPosRef.current = wrapped;
+    }
+  }, [sliderBrands.length]);
+
   const stepSlide = useCallback(
     (delta) => {
-      if (sliderBrands.length <= 1) return;
-      setSlideDir(delta >= 0 ? 'next' : 'prev');
-      setSlideIdx((prev) => (((prev + delta) % sliderBrands.length) + sliderBrands.length) % sliderBrands.length);
+      const n = sliderBrands.length;
+      if (n <= 1) return;
+      if (snapTimeoutRef.current) {
+        window.clearTimeout(snapTimeoutRef.current);
+      }
+      setAnimateTrack(true);
+      setTrackPos((prev) => {
+        const next = prev + delta;
+        // Clone chegarasidan oshib ketmaslik uchun himoya
+        if (next > CLONES_BEFORE + n) return prev;
+        if (next < CLONES_BEFORE - 1) return prev;
+        trackPosRef.current = next;
+        return next;
+      });
+      snapTimeoutRef.current = window.setTimeout(normalizeBoundary, 620);
     },
-    [sliderBrands.length]
+    [sliderBrands.length, normalizeBoundary]
   );
 
-  // Barqaror autoplay taymeri (hover bo'lganda to'xtaydi, har tickda qayta yaratilmaydi)
+  useEffect(() => {
+    return () => {
+      if (snapTimeoutRef.current) window.clearTimeout(snapTimeoutRef.current);
+    };
+  }, []);
+
+  // Barqaror autoplay taymeri (har 4.2 soniyada silliq chapga suriladi)
   useEffect(() => {
     if (sliderBrands.length <= 1 || sliderPaused) return;
     const timer = window.setInterval(() => {
-      setSlideDir('next');
-      setSlideIdx((prev) => (prev + 1) % sliderBrands.length);
+      if (document.visibilityState === 'hidden') return;
+      stepSlide(1);
     }, 4200);
     return () => window.clearInterval(timer);
-  }, [sliderBrands.length, sliderPaused]);
+  }, [sliderBrands.length, sliderPaused, stepSlide]);
 
-  const getSlideAt = (offset) => {
-    if (sliderBrands.length === 0) return null;
-    const len = sliderBrands.length;
-    const index = (((slideIdx + offset) % len) + len) % len;
-    return sliderBrands[index];
+  const activeSlideIdx = useMemo(() => {
+    const n = sliderBrands.length;
+    if (n <= 1) return 0;
+    return (((trackPos - CLONES_BEFORE) % n) + n) % n;
+  }, [trackPos, sliderBrands.length]);
+
+  const hasDesktopPeeks = viewportMode === 'lg' && sliderBrands.length > 2;
+  const slotWidthPct = hasDesktopPeeks
+    ? 35
+    : viewportMode === 'md' && sliderBrands.length > 1
+      ? 50
+      : 100;
+  const baseOffsetPct = hasDesktopPeeks ? 15 : 0;
+
+  const handleTouchStart = (e) => {
+    if (sliderBrands.length <= 1) return;
+    touchStartXRef.current = e.touches[0].clientX;
+    setSliderPaused(true);
+    setAnimateTrack(false);
+  };
+
+  const handleTouchMove = (e) => {
+    if (touchStartXRef.current === null) return;
+    const dx = e.touches[0].clientX - touchStartXRef.current;
+    setDragOffsetPx(dx);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartXRef.current === null) return;
+    const dx = dragOffsetPx;
+    touchStartXRef.current = null;
+    setDragOffsetPx(0);
+    setSliderPaused(false);
+    if (Math.abs(dx) > 45) {
+      stepSlide(dx < 0 ? 1 : -1);
+    } else {
+      setAnimateTrack(true);
+    }
   };
 
   const categoryDiscountCards = useMemo(() => {
@@ -143,7 +260,7 @@ export default function Home() {
         });
       } else {
         cards.push({
-          id: brand.id,
+          id: `default-${brand.id}`,
           brandId: brand.id,
           brandName: brand.name,
           logoUrl: brand.logo_url,
@@ -161,14 +278,14 @@ export default function Home() {
     return cards;
   }, [categoryBrands, offers]);
 
-  const handleToggleLike = (e, id) => {
+  const handleToggleLike = (e, offerId) => {
     e.preventDefault();
     e.stopPropagation();
     if (!profile?.signedIn) {
       openAuthPromptModal('like');
       return;
     }
-    api.toggleLike(id);
+    api.toggleOfferLike(offerId);
   };
 
   const scrollPartners = (dir) => {
@@ -240,16 +357,13 @@ export default function Home() {
   const breadcrumbs =
     category === 'all' ? [] : [{ label: activeCategoryObj.label_uz }];
 
-  const animClass =
-    slideDir === 'next' ? 'imtiyo-slide-enter-next' : 'imtiyo-slide-enter-prev';
-
   return (
     <AppShell breadcrumbs={breadcrumbs} showImtiyoAbout={true}>
       <div className="space-y-8">
         {/* 1. KATEGORIYALAR NAVIGATSIYASI */}
         <CategoryPills value={category} onChange={setCategory} />
 
-        {/* 2. BO'LIM SARLAVHASI VA PROGRESSIV BLURLI SLAYDER */}
+        {/* 2. BO'LIM SARLAVHASI VA SILLIQ SURILUVCHI + PROGRESSIV BLURLI SLAYDER */}
         <section className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -262,7 +376,7 @@ export default function Home() {
               </p>
             </div>
 
-            {sliderBrands.length > 2 && (
+            {sliderBrands.length > 1 && (
               <div className="flex items-center gap-2 lg:hidden">
                 <button
                   type="button"
@@ -294,109 +408,127 @@ export default function Home() {
                   onMouseEnter={() => setSliderPaused(true)}
                   onMouseLeave={() => setSliderPaused(false)}
                 >
-                  <div className="flex items-center justify-center gap-4 overflow-hidden py-1">
-                    {/* CHAP CHETDAGI YARIM SLAYD — FAQAT TASHQI YARMIDA PROGRESSIV BLUR (25% -> 50% -> 75%) */}
-                    {sliderBrands.length > 2 && getSlideAt(-1) && (
-                      <div
-                        onClick={() => stepSlide(-1)}
-                        className="relative hidden h-[270px] w-[15%] shrink-0 cursor-pointer select-none overflow-hidden rounded-[26px] lg:block"
-                      >
-                        <div
-                          key={`left-${slideIdx}`}
-                          className={cn(
-                            'pointer-events-none absolute inset-y-0 right-0 w-[440px]',
-                            animClass
-                          )}
-                        >
-                          {renderSlideCard(getSlideAt(-1))}
-                        </div>
-
-                        {/* 3-qatlamli progressiv blur: markazga yaqin ichki qism tiniq, tashqi chetga qarab kuchayadi */}
-                        <div className="imtiyo-blur-layer imtiyo-blur-left-1" />
-                        <div className="imtiyo-blur-layer imtiyo-blur-left-2" />
-                        <div className="imtiyo-blur-layer imtiyo-blur-left-3" />
-                        <div className="pointer-events-none absolute inset-y-0 left-0 w-[42%] bg-gradient-to-r from-white/55 via-white/15 to-transparent dark:from-[#070d1f]/75 dark:via-[#070d1f]/25 dark:to-transparent" />
-
-                        <button
-                          type="button"
-                          aria-label="Oldingi slayd"
-                          className="absolute left-3.5 top-1/2 z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-white/40 bg-[#002D96]/90 text-white shadow-lg backdrop-blur-md transition-transform hover:scale-110 hover:bg-[#1D6FF2]"
-                        >
-                          <ChevronLeft className="h-5 w-5" />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* O'RTADAGI 2 TA ASOSIY SLAYD */}
-                    <div
-                      className={cn(
-                        'grid w-full grid-cols-1 gap-4 md:grid-cols-2',
-                        sliderBrands.length > 2 ? 'lg:w-[70%]' : 'lg:w-full'
-                      )}
+                  {sliderBrands.length === 1 ? (
+                    <Link
+                      to={`/brand/${sliderBrands[0].id}?cat=${category}`}
+                      onMouseEnter={() => api.prefetchBrand(sliderBrands[0].id)}
+                      className="group block"
                     >
-                      {[0, 1].map((offset) => {
-                        if (offset === 1 && sliderBrands.length < 2) return null;
-                        const item = getSlideAt(offset);
-                        if (!item) return null;
-                        return (
-                          <Link
-                            key={`${item.id}-${slideIdx}-${offset}`}
-                            to={`/brand/${item.id}?cat=${category}`}
-                            onMouseEnter={() => api.prefetchBrand(item.id)}
-                            className={cn('group block', animClass)}
-                          >
-                            {renderSlideCard(item)}
-                          </Link>
-                        );
-                      })}
+                      {renderSlideCard(sliderBrands[0])}
+                    </Link>
+                  ) : viewportMode === 'lg' && sliderBrands.length === 2 ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      {sliderBrands.map((item) => (
+                        <Link
+                          key={item.id}
+                          to={`/brand/${item.id}?cat=${category}`}
+                          onMouseEnter={() => api.prefetchBrand(item.id)}
+                          className="group block"
+                        >
+                          {renderSlideCard(item)}
+                        </Link>
+                      ))}
                     </div>
-
-                    {/* O'NG CHETDAGI YARIM SLAYD — CHAP TOMONNING KO'ZGUDAGI AKSI */}
-                    {sliderBrands.length > 2 && getSlideAt(2) && (
+                  ) : (
+                    <div
+                      className="relative overflow-hidden py-1"
+                      onTouchStart={handleTouchStart}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                    >
+                      {/* SILLIQ CHAP/O'NG SURILUVCHI SLAYD TREKI */}
                       <div
-                        onClick={() => stepSlide(1)}
-                        className="relative hidden h-[270px] w-[15%] shrink-0 cursor-pointer select-none overflow-hidden rounded-[26px] lg:block"
+                        onTransitionEnd={(e) => {
+                          if (e.target === e.currentTarget && e.propertyName === 'transform') {
+                            normalizeBoundary();
+                          }
+                        }}
+                        className="flex will-change-transform"
+                        style={{
+                          transform: `translate3d(calc(${baseOffsetPct}% - ${
+                            trackPos * slotWidthPct
+                          }% + ${dragOffsetPx}px), 0, 0)`,
+                          transition: animateTrack
+                            ? 'transform 580ms cubic-bezier(0.22, 1, 0.36, 1)'
+                            : 'none',
+                        }}
                       >
-                        <div
-                          key={`right-${slideIdx}`}
-                          className={cn(
-                            'pointer-events-none absolute inset-y-0 left-0 w-[440px]',
-                            animClass
-                          )}
-                        >
-                          {renderSlideCard(getSlideAt(2))}
-                        </div>
-
-                        {/* 3-qatlamli progressiv blur (ko'zgu aksi) */}
-                        <div className="imtiyo-blur-layer imtiyo-blur-right-1" />
-                        <div className="imtiyo-blur-layer imtiyo-blur-right-2" />
-                        <div className="imtiyo-blur-layer imtiyo-blur-right-3" />
-                        <div className="pointer-events-none absolute inset-y-0 right-0 w-[42%] bg-gradient-to-l from-white/55 via-white/15 to-transparent dark:from-[#070d1f]/75 dark:via-[#070d1f]/25 dark:to-transparent" />
-
-                        <button
-                          type="button"
-                          aria-label="Keyingi slayd"
-                          className="absolute right-3.5 top-1/2 z-20 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-white/40 bg-[#002D96]/90 text-white shadow-lg backdrop-blur-md transition-transform hover:scale-110 hover:bg-[#1D6FF2]"
-                        >
-                          <ChevronRight className="h-5 w-5" />
-                        </button>
+                        {extendedSlides.map(({ item, slotKey }) => (
+                          <div
+                            key={slotKey}
+                            className="shrink-0 px-1.5 sm:px-2"
+                            style={{ width: `${slotWidthPct}%` }}
+                          >
+                            <Link
+                              to={`/brand/${item.id}?cat=${category}`}
+                              onMouseEnter={() => api.prefetchBrand(item.id)}
+                              className="group block"
+                            >
+                              {renderSlideCard(item)}
+                            </Link>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                  </div>
+
+                      {/* CHAP CHETDAGI PROGRESSIV BLUR ZONASI (FAKAT TASHQI YARMIDA: 25% -> 50% -> 75%) */}
+                      {hasDesktopPeeks && (
+                        <div
+                          onClick={() => stepSlide(-1)}
+                          className="absolute inset-y-1 left-0 z-20 hidden w-[15%] cursor-pointer select-none overflow-hidden rounded-r-[26px] lg:block"
+                        >
+                          <div className="imtiyo-blur-layer imtiyo-blur-left-1" />
+                          <div className="imtiyo-blur-layer imtiyo-blur-left-2" />
+                          <div className="imtiyo-blur-layer imtiyo-blur-left-3" />
+                          <div className="pointer-events-none absolute inset-y-0 left-0 w-[44%] bg-gradient-to-r from-white/65 via-white/20 to-transparent dark:from-[#070d1f]/80 dark:via-[#070d1f]/25 dark:to-transparent" />
+
+                          <button
+                            type="button"
+                            aria-label="Oldingi slayd"
+                            className="absolute left-3.5 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-white/40 bg-[#002D96]/90 text-white shadow-lg backdrop-blur-md transition-transform hover:scale-110 hover:bg-[#1D6FF2]"
+                          >
+                            <ChevronLeft className="h-5 w-5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* O'NG CHETDAGI PROGRESSIV BLUR ZONASI (CHAP TOMONNING KO'ZGUDAGI AKSI) */}
+                      {hasDesktopPeeks && (
+                        <div
+                          onClick={() => stepSlide(1)}
+                          className="absolute inset-y-1 right-0 z-20 hidden w-[15%] cursor-pointer select-none overflow-hidden rounded-l-[26px] lg:block"
+                        >
+                          <div className="imtiyo-blur-layer imtiyo-blur-right-1" />
+                          <div className="imtiyo-blur-layer imtiyo-blur-right-2" />
+                          <div className="imtiyo-blur-layer imtiyo-blur-right-3" />
+                          <div className="pointer-events-none absolute inset-y-0 right-0 w-[44%] bg-gradient-to-l from-white/65 via-white/20 to-transparent dark:from-[#070d1f]/80 dark:via-[#070d1f]/25 dark:to-transparent" />
+
+                          <button
+                            type="button"
+                            aria-label="Keyingi slayd"
+                            className="absolute right-3.5 top-1/2 z-30 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-white/40 bg-[#002D96]/90 text-white shadow-lg backdrop-blur-md transition-transform hover:scale-110 hover:bg-[#1D6FF2]"
+                          >
+                            <ChevronRight className="h-5 w-5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Slayder nuqtalari */}
                   {sliderBrands.length > 2 && (
                     <div className="mt-3 flex items-center justify-center gap-1.5">
                       {sliderBrands.slice(0, 8).map((b, idx) => {
-                        const isActive = slideIdx % Math.min(sliderBrands.length, 8) === idx;
+                        const isActive = activeSlideIdx % Math.min(sliderBrands.length, 8) === idx;
                         return (
                           <button
                             key={b.id}
                             type="button"
                             aria-label={`Slayd ${idx + 1}`}
                             onClick={() => {
-                              setSlideDir(idx >= slideIdx ? 'next' : 'prev');
-                              setSlideIdx(idx);
+                              setAnimateTrack(true);
+                              const nextPos = CLONES_BEFORE + idx;
+                              setTrackPos(nextPos);
+                              trackPosRef.current = nextPos;
                             }}
                             className={cn(
                               'h-1.5 rounded-full transition-all duration-300',
@@ -493,14 +625,12 @@ export default function Home() {
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                   {categoryDiscountCards.map((card) => {
-                    const isLiked =
-                      likedIds.includes(String(card.id)) ||
-                      likedIds.includes(String(card.brandId));
+                    const isLiked = api.isOfferLiked(card.id, likedIds);
 
                     return (
                       <Link
                         key={card.id}
-                        to={`/brand/${card.brandId}?cat=${category}`}
+                        to={`/brand/${card.brandId}?cat=${category}&offer=${encodeURIComponent(card.id)}`}
                         onMouseEnter={() => api.prefetchBrand(card.brandId)}
                         className="group flex flex-col overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_12px_32px_-18px_rgba(8,18,58,0.16)] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:shadow-[0_12px_32px_-18px_rgba(0,0,0,0.6)]"
                       >
@@ -519,8 +649,8 @@ export default function Home() {
                             />
                           )}
 
-                          {/* Dark mode moslangan pastki yumshoq gradient */}
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white via-white/70 to-transparent backdrop-blur-[2px] dark:from-slate-900 dark:via-slate-900/75 dark:to-transparent" />
+                          {/* Pastki 25% dan boshlanuvchi 3-qatlamli progressiv blur */}
+                          <CardImageBlur direction="bottom" />
 
                           {/* Brend logosi (oq kvadratda) */}
                           <div className="absolute left-3 top-3 z-10 grid h-14 w-14 place-items-center overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-md">

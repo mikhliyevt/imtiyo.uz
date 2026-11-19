@@ -397,6 +397,11 @@ const mapProfile = (r) => {
     (r.email ? extrasMap[String(r.email).toLowerCase()] : null) ||
     {};
   const courseVal = normalizeCourse(r.course ?? localExtra.course ?? '');
+  const effectiveStatus = r.status || localReview.status || 'unverified';
+  const effectiveRejection =
+    effectiveStatus === 'rejected'
+      ? r.rejection_reason || localReview.rejection_reason || ''
+      : '';
   return {
     id: r.id,
     name: r.full_name || r.name || '',
@@ -413,13 +418,13 @@ const mapProfile = (r) => {
     email_verified: Boolean(r.email_verified),
     student_id: cleanStudentId(r.student_id),
     provider: r.provider || 'email',
-    status: r.status || 'unverified',
+    status: effectiveStatus,
     document_name: r.document_name || '',
     document_url: r.document_url || '',
     submitted_date: r.submitted_date || '',
     created_at: r.created_at || r.submitted_date || '',
     last_login: r.last_login || r.created_at || r.submitted_date || '',
-    rejection_reason: r.rejection_reason || localReview.rejection_reason || '',
+    rejection_reason: effectiveRejection,
     reviewed_by: r.reviewed_by || localReview.reviewed_by || '',
     reviewed_at: r.reviewed_at || localReview.reviewed_at || '',
   };
@@ -1339,17 +1344,49 @@ export const api = {
       writeLocal(STORAGE_KEYS.PROFILE_EXTRAS, extrasMap);
     }
 
-    if ('rejection_reason' in payload || 'reviewed_by' in payload) {
+    if ('status' in payload || 'rejection_reason' in payload || 'reviewed_by' in payload) {
       const reviewsMap = readLocal(STORAGE_KEYS.PROFILE_REVIEWS, {});
+      const nextStatus = payload.status ?? reviewsMap[id]?.status;
       reviewsMap[id] = {
         ...(reviewsMap[id] || {}),
+        ...(nextStatus !== undefined ? { status: nextStatus } : {}),
         ...(payload.rejection_reason !== undefined
           ? { rejection_reason: payload.rejection_reason }
-          : {}),
+          : nextStatus && nextStatus !== 'rejected'
+            ? { rejection_reason: '' }
+            : {}),
         ...(payload.reviewed_by !== undefined ? { reviewed_by: payload.reviewed_by } : {}),
         reviewed_at: new Date().toISOString(),
       };
       writeLocal(STORAGE_KEYS.PROFILE_REVIEWS, reviewsMap);
+
+      // Agar shu qurilmada ayni talaba login bo'lgan bo'lsa, profil keshini ham darhol yangilash
+      try {
+        const storedRaw = localStorage.getItem('imtiyo_student_profile_v2');
+        if (storedRaw) {
+          const stored = JSON.parse(storedRaw);
+          if (stored && String(stored.id) === String(id)) {
+            const patched = {
+              ...stored,
+              ...(nextStatus !== undefined ? { status: nextStatus } : {}),
+              rejection_reason:
+                nextStatus === 'rejected'
+                  ? payload.rejection_reason ?? stored.rejection_reason ?? ''
+                  : nextStatus
+                    ? ''
+                    : payload.rejection_reason ?? stored.rejection_reason ?? '',
+              ...(payload.reviewed_by !== undefined ? { reviewed_by: payload.reviewed_by } : {}),
+              reviewed_at: reviewsMap[id].reviewed_at,
+            };
+            localStorage.setItem('imtiyo_student_profile_v2', JSON.stringify(patched));
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('imtiyo_profile_updated'));
+      }
     }
 
     const { data: updated, error } = await supabase
@@ -1373,13 +1410,32 @@ export const api = {
 
       // Second retry without `course` column in case migration isn't run yet
       delete safePayload.course;
-      const { data: retry2 } = await supabase
+      const { data: retry2, error: err2 } = await supabase
         .from('profiles')
         .update(safePayload)
         .eq('id', id)
         .select()
         .maybeSingle();
-      return retry2 ? mapProfile(retry2) : null;
+      if (!err2 && retry2) return mapProfile(retry2);
+
+      // Final retry preserving core status + rejection_reason
+      if ('status' in safePayload) {
+        const minimal = {
+          status: safePayload.status,
+          ...('rejection_reason' in safePayload
+            ? { rejection_reason: safePayload.rejection_reason }
+            : {}),
+        };
+        const { data: retry3 } = await supabase
+          .from('profiles')
+          .update(minimal)
+          .eq('id', id)
+          .select()
+          .maybeSingle();
+        if (retry3) return mapProfile(retry3);
+      }
+
+      return null;
     }
     return updated ? mapProfile(updated) : null;
   },
@@ -1427,11 +1483,62 @@ export const api = {
   },
 
   getLikedIds() {
-    return readLocal(STORAGE_KEYS.LIKED_OFFERS, []);
+    return readLocal(STORAGE_KEYS.LIKED_OFFERS, []).map(String);
+  },
+
+  isOfferLiked(offerId, likedList = null) {
+    const clean = String(offerId || '').replace(/^offer:/, '');
+    if (!clean) return false;
+    const list = (likedList || this.getLikedIds()).map(String);
+    return list.includes(`offer:${clean}`) || list.includes(clean);
+  },
+
+  toggleOfferLike(offerId) {
+    const clean = String(offerId || '').replace(/^offer:/, '');
+    if (!clean) return this.getLikedIds();
+    const key = `offer:${clean}`;
+    const current = readLocal(STORAGE_KEYS.LIKED_OFFERS, []).map(String);
+    const exists = current.includes(key) || current.includes(clean);
+    const next = exists
+      ? current.filter((id) => id !== key && id !== clean)
+      : [key, ...current.filter((id) => id !== key && id !== clean)];
+    writeLocal(STORAGE_KEYS.LIKED_OFFERS, next);
+    window.dispatchEvent(new Event('imtiyo_likes_changed'));
+    return next;
+  },
+
+  isBrandLiked(brandId, likedList = null) {
+    const clean = String(brandId || '').replace(/^brand[-:]/, '');
+    if (!clean) return false;
+    const list = (likedList || this.getLikedIds()).map(String);
+    return list.includes(`brand:${clean}`) || list.includes(`brand-${clean}`);
+  },
+
+  toggleBrandLike(brandId) {
+    const clean = String(brandId || '').replace(/^brand[-:]/, '');
+    if (!clean) return this.getLikedIds();
+    const key = `brand:${clean}`;
+    const current = readLocal(STORAGE_KEYS.LIKED_OFFERS, []).map(String);
+    const exists =
+      current.includes(key) ||
+      current.includes(`brand-${clean}`) ||
+      current.includes(clean);
+    const next = exists
+      ? current.filter((id) => id !== key && id !== `brand-${clean}` && id !== clean)
+      : [key, ...current];
+    writeLocal(STORAGE_KEYS.LIKED_OFFERS, next);
+    window.dispatchEvent(new Event('imtiyo_likes_changed'));
+    return next;
   },
 
   toggleLike(itemId) {
     const strId = String(itemId);
+    if (strId.startsWith('offer:')) {
+      return this.toggleOfferLike(strId);
+    }
+    if (strId.startsWith('brand:') || strId.startsWith('brand-')) {
+      return this.toggleBrandLike(strId);
+    }
     const current = readLocal(STORAGE_KEYS.LIKED_OFFERS, []).map(String);
     const exists = current.includes(strId);
     const next = exists ? current.filter((id) => id !== strId) : [strId, ...current];

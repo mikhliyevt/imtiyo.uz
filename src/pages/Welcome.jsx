@@ -24,6 +24,7 @@ import Logo from '@/components/Logo';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import PageTopGradient from '@/components/PageTopGradient';
 import PageBreadcrumb from '@/components/PageBreadcrumb';
+import UniversitySelect from '@/components/UniversitySelect';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
 import { OAUTH_PENDING_KEY, OAUTH_RETURN_KEY, useStudent } from '@/lib/StudentContext';
@@ -1238,31 +1239,18 @@ export default function Welcome() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                <Building2 className="h-4 w-4 shrink-0 text-slate-400" />
-                <select
-                  value={university}
-                  onChange={(e) => {
-                    setUniversity(e.target.value);
-                    if (e.target.value !== 'Boshqa') setCustomInstitution('');
-                  }}
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
-                >
-                  <option value="">
-                    {region ? 'Ta’lim muassasangizni tanlang' : 'Avval viloyatingizni tanlang'}
-                  </option>
-                  {filteredSortedUniversities.map((u) => {
-                    const name = typeof u === 'string' ? u : u.name;
-                    const shortName = typeof u === 'object' && u.short_name ? u.short_name : '';
-                    return (
-                      <option key={u.id || name} value={name}>
-                        {shortName ? `${shortName} — ${name}` : name}
-                      </option>
-                    );
-                  })}
-                  <option value="Boshqa">Boshqa</option>
-                </select>
-              </div>
+              <UniversitySelect
+                universities={filteredSortedUniversities}
+                value={university}
+                onChange={(val) => {
+                  setUniversity(val);
+                  if (val !== 'Boshqa') setCustomInstitution('');
+                }}
+                placeholder={
+                  region ? 'Ta’lim muassasangizni qidiring yoki tanlang' : 'Avval viloyatingizni tanlang'
+                }
+                otherLabel="Boshqa"
+              />
 
               {university === 'Boshqa' && (
                 <div>

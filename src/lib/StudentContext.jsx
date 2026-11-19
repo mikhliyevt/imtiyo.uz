@@ -29,6 +29,7 @@ const DEFAULT_GUEST_PROFILE = {
   document_url: '',
   rejection_reason: '',
   reviewed_by: '',
+  reviewed_at: '',
 };
 
 function readStoredProfile() {
@@ -311,6 +312,17 @@ export function StudentProvider({ children }) {
       return current;
     }
 
+    let localReview = null;
+    try {
+      const rawReviews = localStorage.getItem(PROFILE_REVIEWS_KEY);
+      if (rawReviews && current.id) {
+        const parsed = JSON.parse(rawReviews);
+        localReview = parsed?.[current.id] || null;
+      }
+    } catch {
+      /* ignore */
+    }
+
     try {
       const matched = await api.findProfile({
         id: current.id,
@@ -319,9 +331,17 @@ export function StudentProvider({ children }) {
       });
 
       if (matched) {
+        const nextStatus = matched.status || localReview?.status || current.status;
         const merged = {
           ...current,
           ...matched,
+          status: nextStatus,
+          rejection_reason:
+            nextStatus === 'rejected'
+              ? matched.rejection_reason || localReview?.rejection_reason || current.rejection_reason || ''
+              : '',
+          reviewed_by: matched.reviewed_by || localReview?.reviewed_by || current.reviewed_by || '',
+          reviewed_at: matched.reviewed_at || localReview?.reviewed_at || current.reviewed_at || '',
           name: matched.full_name || matched.name || current.name,
           course: normalizeCourse(matched.course || current.course),
           signedIn: true,
@@ -333,14 +353,68 @@ export function StudentProvider({ children }) {
     } catch {
       /* ignore */
     }
+
+    if (localReview) {
+      const nextStatus = localReview.status || current.status;
+      const mergedLocal = {
+        ...current,
+        status: nextStatus,
+        rejection_reason:
+          nextStatus === 'rejected'
+            ? localReview.rejection_reason ?? current.rejection_reason ?? ''
+            : '',
+        reviewed_by: localReview.reviewed_by ?? current.reviewed_by ?? '',
+        reviewed_at: localReview.reviewed_at ?? current.reviewed_at ?? '',
+        signedIn: true,
+      };
+      setProfile(mergedLocal);
+      writeStoredProfile(mergedLocal);
+      return mergedLocal;
+    }
+
     return current;
   }, []);
 
   useEffect(() => {
-    if (profile?.signedIn) {
+    if (!profile?.signedIn) return;
+    reload();
+
+    const handleRefresh = () => {
+      if (document.visibilityState === 'hidden') return;
       reload();
+    };
+    const handleStorage = (e) => {
+      if (
+        e.key === LOCAL_PROFILE_KEY ||
+        e.key === PROFILE_REVIEWS_KEY ||
+        e.key === null
+      ) {
+        reload();
+      }
+    };
+
+    window.addEventListener('focus', handleRefresh);
+    document.addEventListener('visibilitychange', handleRefresh);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('imtiyo_profile_updated', reload);
+
+    let pollTimer = null;
+    if (profile.status === 'pending' || profile.status === 'unverified') {
+      pollTimer = window.setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          reload();
+        }
+      }, 25000);
     }
-  }, [reload]);
+
+    return () => {
+      window.removeEventListener('focus', handleRefresh);
+      document.removeEventListener('visibilitychange', handleRefresh);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('imtiyo_profile_updated', reload);
+      if (pollTimer) window.clearInterval(pollTimer);
+    };
+  }, [profile?.signedIn, profile?.status, reload]);
 
   const updateProfile = useCallback(async (changes = {}) => {
     const current = readStoredProfile();

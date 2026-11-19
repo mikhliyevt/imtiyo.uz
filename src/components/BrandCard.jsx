@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Flame, Heart, QrCode, Smartphone } from 'lucide-react';
 import { Image } from '@/components/ui/image';
 import { openAuthPromptModal } from '@/components/AppShell';
+import CardImageBlur from '@/components/CardImageBlur';
 import { useStudent } from '@/lib/StudentContext';
 import { api } from '@/services/api';
 import { cn } from '@/lib/utils';
@@ -18,14 +19,16 @@ const categoryKey = {
 
 export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
   const { profile } = useStudent();
-  const itemKey = offer ? `offer:${offer.id}` : `brand:${brand.id}`;
-  const [liked, setLiked] = useState(() => api.getLikedIds().includes(itemKey));
+  const [liked, setLiked] = useState(() =>
+    offer ? api.isOfferLiked(offer.id) : api.isBrandLiked(brand.id)
+  );
 
   useEffect(() => {
-    const sync = () => setLiked(api.getLikedIds().includes(itemKey));
+    const sync = () =>
+      setLiked(offer ? api.isOfferLiked(offer.id) : api.isBrandLiked(brand.id));
     window.addEventListener('imtiyo_likes_changed', sync);
     return () => window.removeEventListener('imtiyo_likes_changed', sync);
-  }, [itemKey]);
+  }, [offer, brand.id]);
 
   const handleLike = (e) => {
     e.preventDefault();
@@ -34,7 +37,11 @@ export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
       openAuthPromptModal('like');
       return;
     }
-    api.toggleLike(itemKey);
+    if (offer) {
+      api.toggleOfferLike(offer.id);
+    } else {
+      api.toggleBrandLike(brand.id);
+    }
   };
 
   const isApp = (offer?.redemption || brand.redemption) === 'app';
@@ -74,7 +81,7 @@ export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
             <span className="text-4xl font-extrabold text-white/30">{brand.monogram}</span>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+        <CardImageBlur direction="bottom" />
 
         {/* Brend logotipi (oq kvadrat ichida) */}
         <div className="absolute left-3 top-3 grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-white p-1.5 shadow-md">

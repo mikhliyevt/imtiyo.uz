@@ -40,6 +40,7 @@ import {
 import BrandForm from '@/components/admin/BrandForm';
 import OfferForm from '@/components/admin/OfferForm';
 import VerificationPill from '@/components/VerificationPill';
+import UniversitySelect from '@/components/UniversitySelect';
 import { CATEGORY_ICON_MAP } from '@/components/CategoryPills';
 import Logo from '@/components/Logo';
 import PageTopGradient from '@/components/PageTopGradient';
@@ -497,12 +498,19 @@ export default function Admin() {
         .trim();
     const targetNorm = norm(activeRegionCard);
 
+    const q = uniSearchQuery.trim().toLowerCase();
     return alphabetSortedUniversities.filter((u) => {
       if (!u || typeof u === 'string') return false;
       if (!u.region) return false;
-      return u.region === activeRegionCard || norm(u.region) === targetNorm;
+      const matchReg = u.region === activeRegionCard || norm(u.region) === targetNorm;
+      if (!matchReg) return false;
+      if (!q) return true;
+      return (
+        String(u.name || '').toLowerCase().includes(q) ||
+        String(u.short_name || '').toLowerCase().includes(q)
+      );
     });
-  }, [alphabetSortedUniversities, activeRegionCard]);
+  }, [alphabetSortedUniversities, activeRegionCard, uniSearchQuery]);
 
   const studentWrittenUniversities = useMemo(() => {
     const officialNamesSet = new Set(
@@ -1370,22 +1378,17 @@ export default function Admin() {
                     ))}
                   </select>
 
-                  <select
+                  <UniversitySelect
+                    universities={alphabetSortedUniversities}
                     value={filterUniversity}
-                    onChange={(e) => setFilterUniversity(e.target.value)}
-                    className={cn(inputCls, 'h-9 w-full px-2.5 text-[12px]')}
-                  >
-                    <option value="">Barcha universitetlar</option>
-                    {alphabetSortedUniversities.map((u, idx) => {
-                      const name = typeof u === 'string' ? u : u?.name || '';
-                      if (!name) return null;
-                      return (
-                        <option key={u?.id || `${name}-${idx}`} value={name}>
-                          {name}
-                        </option>
-                      );
-                    })}
-                  </select>
+                    onChange={setFilterUniversity}
+                    placeholder="Barcha universitetlar"
+                    clearLabel="Barcha universitetlar"
+                    allowClear
+                    allowOther={false}
+                    compact
+                    showIcon={false}
+                  />
 
                   <div className="flex gap-1.5">
                     <select
@@ -2248,33 +2251,60 @@ export default function Admin() {
                     </form>
 
                     <div className="rounded-[24px] border border-slate-200/80 bg-white/95 p-5 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
-                      <ul className="space-y-2">
-                        {regionFilteredUniversities.map((uni, idx) => {
-                          const uniName = typeof uni === 'string' ? uni : uni?.name || '';
-                          const uniShort = typeof uni === 'object' ? uni?.short_name : '';
-                          return (
-                            <li
-                              key={uni?.id || `${uniName}-${idx}`}
-                              className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-800/60"
-                            >
-                              <p className="truncate text-[13px] font-bold text-[#08123A] dark:text-white">
-                                {uniShort ? `${uniShort} — ${uniName}` : uniName}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const next = await api.deleteUniversity(uniName);
-                                  setUniversities(Array.isArray(next) ? next.filter(Boolean) : []);
-                                  toast({ title: 'Universitet o‘chirildi' });
-                                }}
-                                className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-500 dark:bg-rose-950/60 dark:text-rose-400"
+                      <div className="relative mb-3.5">
+                        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={uniSearchQuery}
+                          onChange={(e) => setUniSearchQuery(e.target.value)}
+                          placeholder={`${activeRegionCard} universitetlari orasidan qidiring...`}
+                          className={cn(inputCls, 'h-10 w-full pl-10 pr-9')}
+                        />
+                        {uniSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setUniSearchQuery('')}
+                            aria-label="Tozalash"
+                            className="absolute right-2.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {regionFilteredUniversities.length === 0 ? (
+                        <p className="py-6 text-center text-[12.5px] font-bold text-slate-400">
+                          Mos universitet topilmadi
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {regionFilteredUniversities.map((uni, idx) => {
+                            const uniName = typeof uni === 'string' ? uni : uni?.name || '';
+                            const uniShort = typeof uni === 'object' ? uni?.short_name : '';
+                            return (
+                              <li
+                                key={uni?.id || `${uniName}-${idx}`}
+                                className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-800/60"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                                <p className="truncate text-[13px] font-bold text-[#08123A] dark:text-white">
+                                  {uniShort ? `${uniShort} — ${uniName}` : uniName}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const next = await api.deleteUniversity(uniName);
+                                    setUniversities(Array.isArray(next) ? next.filter(Boolean) : []);
+                                    toast({ title: 'Universitet o‘chirildi' });
+                                  }}
+                                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-500 dark:bg-rose-950/60 dark:text-rose-400"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 </div>

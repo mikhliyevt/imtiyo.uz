@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import AppShell, { openAuthPromptModal } from '@/components/AppShell';
+import CardImageBlur from '@/components/CardImageBlur';
 import { Button } from '@/components/ui/button';
 import { useStudent } from '@/lib/StudentContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -40,6 +41,8 @@ export default function BrandDetail() {
   const [activeBranch, setActiveBranch] = useState(null);
   const [activatedCode, setActivatedCode] = useState(null);
 
+  const requestedOfferId = searchParams.get('offer') || '';
+
   useEffect(() => {
     if (!slug) return;
     let active = true;
@@ -53,16 +56,39 @@ export default function BrandDetail() {
     ]).then(([bData, oList, locList, cList]) => {
       if (!active) return;
       setBrand(bData);
-      setOffers(Array.isArray(oList) ? oList : []);
+      const validOffers = Array.isArray(oList) ? oList : [];
+      setOffers(validOffers);
       const validLocs = Array.isArray(locList) ? locList : [];
       setLocations(validLocs);
       if (validLocs.length > 0) setActiveBranch(validLocs[0]);
       if (Array.isArray(cList) && cList.length) setCategories(cList);
+
+      if (requestedOfferId && bData) {
+        const cleanReq = requestedOfferId.replace(/^offer:/, '');
+        const match = validOffers.find((o) => String(o.id) === cleanReq);
+        if (match) {
+          setSelectedOffer(match);
+        } else if (cleanReq === `default-${bData.id}` && validOffers.length === 0) {
+          setSelectedOffer({
+            id: `default-${bData.id}`,
+            title_uz: bData.tagline?.uz || `${bData.name} talaba chegirmasi`,
+            description_uz:
+              bData.description?.uz ||
+              `${bData.name} barcha filiallari va xizmatlarida tasdiqlangan talabalar uchun maxsus chegirma.`,
+            terms_uz:
+              '1. Chegirma faqat tasdiqlangan IMTIYO talabalari uchun amal qiladi.\n2. Kod faollashtirilgandan so‘ng 15 daqiqa davomida kassada ko‘rsatilishi lozim.',
+            discount: bData.discount || 'Maxsus taklif',
+            redemption: bData.redemption || 'qr',
+            valid_until: bData.valid_until || '31/12/2026',
+            image_url: bData.cover_url,
+          });
+        }
+      }
     });
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [slug, requestedOfferId]);
 
   useEffect(() => {
     const sync = () => setLikedIds(api.getLikedIds().map(String));
@@ -117,15 +143,27 @@ export default function BrandDetail() {
     );
   }
 
-  const isBrandLiked = likedIds.includes(String(brand.id));
+  const isBrandLiked = api.isBrandLiked(brand.id, likedIds);
   const showBrandMap = Boolean(brand.has_map) && locations.length > 0;
 
-  const handleLikeClick = (targetId) => {
+  const handleBrandLikeClick = () => {
     if (!profile?.signedIn) {
       openAuthPromptModal('like');
       return;
     }
-    api.toggleLike(targetId);
+    api.toggleBrandLike(brand.id);
+  };
+
+  const handleOfferLikeClick = (e, offerId) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!profile?.signedIn) {
+      openAuthPromptModal('like');
+      return;
+    }
+    api.toggleOfferLike(offerId);
   };
 
   const handleActivateOffer = async (offerItem) => {
@@ -190,17 +228,38 @@ export default function BrandDetail() {
 
             <div className="space-y-5 lg:col-span-7">
               <div>
-                <div className="flex items-center gap-3">
-                  {brand.logo_url && (
-                    <img
-                      src={brand.logo_url}
-                      alt={brand.name}
-                      className="h-10 w-10 rounded-xl border border-slate-100 bg-white object-contain p-1 shadow-sm"
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    {brand.logo_url && (
+                      <img
+                        src={brand.logo_url}
+                        alt={brand.name}
+                        className="h-10 w-10 rounded-xl border border-slate-100 bg-white object-contain p-1 shadow-sm"
+                      />
+                    )}
+                    <span className="text-[14px] font-extrabold text-slate-500 dark:text-slate-400">
+                      {brand.name}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => handleOfferLikeClick(e, selectedOffer.id)}
+                    aria-label="Chegirmani saqlash"
+                    className="inline-flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 text-[12px] font-bold text-[#08123A] shadow-sm transition-transform hover:scale-105 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    <Heart
+                      className={cn(
+                        'h-4 w-4 transition-colors',
+                        api.isOfferLiked(selectedOffer.id, likedIds)
+                          ? 'fill-rose-500 text-rose-500'
+                          : 'fill-transparent text-[#08123A] dark:text-slate-200'
+                      )}
                     />
-                  )}
-                  <span className="text-[14px] font-extrabold text-slate-500 dark:text-slate-400">
-                    {brand.name}
-                  </span>
+                    <span>
+                      {api.isOfferLiked(selectedOffer.id, likedIds) ? 'Saqlangan' : 'Saqlash'}
+                    </span>
+                  </button>
                 </div>
 
                 <h1 className="mt-2 text-[26px] font-black leading-tight text-[#08123A] dark:text-white md:text-[32px]">
@@ -314,8 +373,9 @@ export default function BrandDetail() {
             <section className="relative grid grid-cols-1 items-start gap-7 rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-[0_18px_45px_-28px_rgba(8,18,58,0.18)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 md:grid-cols-12 md:p-8">
               <button
                 type="button"
-                onClick={() => handleLikeClick(brand.id)}
-                aria-label="Saqlash"
+                onClick={handleBrandLikeClick}
+                aria-label="Brendni saqlash"
+                title="Brendni saqlash"
                 className="absolute right-6 top-6 z-10 grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white text-[#08123A] shadow-sm transition-transform hover:scale-105 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
                 <Heart
@@ -454,6 +514,7 @@ export default function BrandDetail() {
               <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
                 {displayOffers.map((offer) => {
                   const offerImg = offer.image_url || brand.cover_url;
+                  const isOfferLiked = api.isOfferLiked(offer.id, likedIds);
                   return (
                     <div
                       key={offer.id}
@@ -462,7 +523,7 @@ export default function BrandDetail() {
                         setActivatedCode(null);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className="group flex cursor-pointer flex-col overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-[0_14px_34px_-20px_rgba(8,18,58,0.16)] transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 sm:flex-row"
+                      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-[0_14px_34px_-20px_rgba(8,18,58,0.16)] transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 sm:flex-row"
                     >
                       <div
                         className="relative h-48 w-full shrink-0 overflow-hidden sm:h-auto sm:w-48"
@@ -479,23 +540,43 @@ export default function BrandDetail() {
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         )}
-                        <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-12 bg-gradient-to-l from-white via-white/75 to-transparent backdrop-blur-[2px] dark:from-slate-900 dark:via-slate-900/75 dark:to-transparent sm:block" />
+                        {/* Mobilda pastki 25% dan, desktopda o'ng 25% dan boshlanuvchi progressiv blur */}
+                        <CardImageBlur direction="bottom-sm-right" />
 
-                        <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-[#002D96] shadow-sm">
+                        <span className="absolute bottom-3 left-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-[#002D96] shadow-sm">
                           <Sparkles className="h-3 w-3 text-[#1D6FF2]" />
-                          Yangi
+                          {offer.discount || 'Yangi'}
                         </span>
                       </div>
 
-                      <div className="flex flex-1 flex-col justify-between p-5">
-                        <div>
-                          <h3 className="text-[17px] font-extrabold text-[#08123A] group-hover:text-[#1D6FF2] dark:text-white dark:group-hover:text-sky-400">
-                            {offer.title_uz || offer.title?.uz || `${brand.name} talaba chegirmasi`}
-                          </h3>
-                          <p className="mt-1.5 text-[12.5px] font-medium text-slate-500 dark:text-slate-400">
-                            Amal qiladi: {offer.valid_until || '31/12/2026'} gacha •{' '}
-                            {offer.redemption === 'app' ? 'Online' : 'Filialda (On-site)'}
-                          </p>
+                      <div className="relative flex flex-1 flex-col justify-between p-5">
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-[17px] font-extrabold text-[#08123A] group-hover:text-[#1D6FF2] dark:text-white dark:group-hover:text-sky-400">
+                              {offer.title_uz || offer.title?.uz || `${brand.name} talaba chegirmasi`}
+                            </h3>
+                            <p className="mt-1.5 text-[12.5px] font-medium text-slate-500 dark:text-slate-400">
+                              Amal qiladi: {offer.valid_until || '31/12/2026'} gacha •{' '}
+                              {offer.redemption === 'app' ? 'Online' : 'Filialda (On-site)'}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleOfferLikeClick(e, offer.id)}
+                            aria-label="Chegirmani saqlash"
+                            title="Chegirmani saqlash"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200/90 bg-white text-[#08123A] shadow-sm transition-transform hover:scale-110 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                          >
+                            <Heart
+                              className={cn(
+                                'h-4 w-4 transition-colors',
+                                isOfferLiked
+                                  ? 'fill-rose-500 text-rose-500'
+                                  : 'fill-transparent text-[#08123A] dark:text-slate-200'
+                              )}
+                            />
+                          </button>
                         </div>
 
                         <button

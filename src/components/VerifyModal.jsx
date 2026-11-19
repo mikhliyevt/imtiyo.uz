@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import UniversitySelect from '@/components/UniversitySelect';
 import { useStudent } from '@/lib/StudentContext';
 import { useToast } from '@/components/ui/use-toast';
 import { api } from '@/services/api';
@@ -221,43 +222,19 @@ export default function VerifyModal({ open, onOpenChange }) {
             </select>
           </div>
 
-          {/* 3. SHU VILOYATDAGI UNIVERSITETLAR RO'YXATI + "BOSHQA" */}
-          <div
-            className={cn(
-              'flex items-center gap-2.5 rounded-2xl border px-3.5 py-2.5 transition-opacity',
-              region
-                ? 'border-slate-200 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-800/80'
-                : 'pointer-events-none border-slate-100 bg-slate-100/60 opacity-50 dark:border-slate-800 dark:bg-slate-800/40'
-            )}
-          >
-            <Building2 className="h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
-            <select
-              required
-              disabled={!region}
-              value={university}
-              onChange={(e) => {
-                setUniversity(e.target.value);
-                if (e.target.value !== 'Boshqa') setCustomInstitution('');
-              }}
-              className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
-            >
-              <option value="">
-                {region
-                  ? '2. Oliy ta’lim muassasangizni tanlang *'
-                  : 'Avval viloyatni tanlang'}
-              </option>
-              {filteredUniversities.map((u, idx) => {
-                const name = typeof u === 'string' ? u : u?.name || '';
-                const shortName = typeof u === 'object' && u?.short_name ? u.short_name : '';
-                return (
-                  <option key={u?.id || `${name}-${idx}`} value={name}>
-                    {shortName ? `${shortName} — ${name}` : name}
-                  </option>
-                );
-              })}
-              <option value="Boshqa">Boshqa (Ro‘yxatda yo‘q)</option>
-            </select>
-          </div>
+          {/* 3. SHU VILOYATDAGI UNIVERSITETLAR RO'YXATI (QIDIRUVLI) + "BOSHQA" */}
+          <UniversitySelect
+            universities={filteredUniversities}
+            value={university}
+            disabled={!region}
+            onChange={(val) => {
+              setUniversity(val);
+              if (val !== 'Boshqa') setCustomInstitution('');
+            }}
+            placeholder="2. Oliy ta’lim muassasangizni qidiring *"
+            emptyPlaceholder="Avval viloyatni tanlang"
+            otherLabel="Boshqa (Ro‘yxatda yo‘q)"
+          />
 
           {/* 4. AGAR "BOSHQA" TANLANSA -> TA'LIM MUASSASANGIZ NOMINI YOZISH PANELI */}
           {university === 'Boshqa' && (

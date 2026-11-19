@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Flame, Heart, QrCode, Search, Smartphone, Sparkles, X } from 'lucide-react';
 import AppShell, { openAuthPromptModal } from '@/components/AppShell';
 import CategoryPills from '@/components/CategoryPills';
+import CardImageBlur from '@/components/CardImageBlur';
 import { useStudent } from '@/lib/StudentContext';
 import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { cn } from '@/lib/utils';
@@ -43,41 +44,84 @@ export default function Explore() {
     return () => window.removeEventListener('imtiyo_likes_changed', sync);
   }, []);
 
-  const filteredBrands = useMemo(() => {
+  const allDiscountCards = useMemo(() => {
+    const cards = [];
+    brands.forEach((brand) => {
+      const brandOffers = offers.filter((o) => String(o.brand_id) === String(brand.id));
+      if (brandOffers.length > 0) {
+        brandOffers.forEach((o) => {
+          cards.push({
+            id: o.id,
+            brandId: brand.id,
+            brandName: brand.name,
+            category: brand.category,
+            categories: brand.categories || [],
+            logoUrl: brand.logo_url,
+            monogram: brand.monogram || (brand.name || 'I').slice(0, 2).toUpperCase(),
+            coverUrl: o.image_url || brand.cover_url,
+            accent: brand.accent || '#002D96',
+            accent2: brand.accent2 || '#1D6FF2',
+            discount: o.discount || brand.discount || '-15%',
+            title: o.title_uz || o.title?.uz || `${brand.name} talaba chegirmasi`,
+            validUntil: o.valid_until || brand.valid_until || '31/12/2026',
+            redemption: o.redemption || brand.redemption || 'qr',
+            activations: o.activations_count || brand.activations_count || 240,
+          });
+        });
+      } else {
+        cards.push({
+          id: `default-${brand.id}`,
+          brandId: brand.id,
+          brandName: brand.name,
+          category: brand.category,
+          categories: brand.categories || [],
+          logoUrl: brand.logo_url,
+          monogram: brand.monogram || (brand.name || 'I').slice(0, 2).toUpperCase(),
+          coverUrl: brand.cover_url,
+          accent: brand.accent || '#002D96',
+          accent2: brand.accent2 || '#1D6FF2',
+          discount: brand.discount || '-20%',
+          title: brand.tagline?.uz || `${brand.name} — talabalar uchun maxsus chegirma`,
+          validUntil: brand.valid_until || '31/12/2026',
+          redemption: brand.redemption || 'qr',
+          activations: brand.activations_count || 240,
+        });
+      }
+    });
+    return cards;
+  }, [brands, offers]);
+
+  const filteredCards = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return brands.filter((b) => {
+    return allDiscountCards.filter((card) => {
       const matchCat =
         category === 'all' ||
-        b.category === category ||
-        (Array.isArray(b.categories) && b.categories.includes(category));
+        card.category === category ||
+        (Array.isArray(card.categories) && card.categories.includes(category));
       const matchQuery =
         !q ||
-        (b.name || '').toLowerCase().includes(q) ||
-        (b.tagline?.uz || '').toLowerCase().includes(q) ||
-        (b.category || '').toLowerCase().includes(q) ||
-        (b.discount || '').toLowerCase().includes(q);
+        (card.brandName || '').toLowerCase().includes(q) ||
+        (card.title || '').toLowerCase().includes(q) ||
+        (card.category || '').toLowerCase().includes(q) ||
+        (card.discount || '').toLowerCase().includes(q);
 
-      const hasLikedOffer = offers.some(
-        (o) => String(o.brand_id) === String(b.id) && likedIds.includes(String(o.id))
-      );
-      const isBrandLiked =
-        likedIds.includes(String(b.id)) ||
-        likedIds.includes(`brand-${b.id}`) ||
-        likedIds.includes(`brand:${b.id}`);
+      const isOfferLiked = api.isOfferLiked(card.id, likedIds);
+      const isFallbackBrandLiked =
+        String(card.id).startsWith('default-') && api.isBrandLiked(card.brandId, likedIds);
+      const matchSaved = !onlySaved || isOfferLiked || isFallbackBrandLiked;
 
-      const matchSaved = !onlySaved || isBrandLiked || hasLikedOffer;
       return matchCat && matchQuery && matchSaved;
     });
-  }, [brands, offers, category, query, onlySaved, likedIds]);
+  }, [allDiscountCards, category, query, onlySaved, likedIds]);
 
-  const handleToggleLike = (e, id) => {
+  const handleToggleLike = (e, offerId) => {
     e.preventDefault();
     e.stopPropagation();
     if (!profile?.signedIn) {
       openAuthPromptModal('like');
       return;
     }
-    api.toggleLike(id);
+    api.toggleOfferLike(offerId);
   };
 
   const activeCategoryObj = categories.find((c) => c.id === category);
@@ -98,7 +142,8 @@ export default function Explore() {
               Chegirmalar va Qidiruv
             </h1>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
-              Barcha hamkor brendlar va talaba chegirmalari ({filteredBrands.length} ta natija)
+              Barcha hamkor brendlar va individual talaba chegirmalari ({filteredCards.length} ta
+              natija)
             </p>
           </div>
 
@@ -156,7 +201,7 @@ export default function Explore() {
               />
             ))}
           </div>
-        ) : filteredBrands.length === 0 ? (
+        ) : filteredCards.length === 0 ? (
           <div className="rounded-[26px] border border-dashed border-slate-300 bg-white/80 py-14 text-center dark:border-slate-700 dark:bg-slate-900/60">
             <Sparkles className="mx-auto h-6 w-6 text-slate-400" />
             <p className="mt-2 text-[14px] font-extrabold text-[#08123A] dark:text-white">
@@ -168,102 +213,87 @@ export default function Explore() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {filteredBrands.map((brand) => {
-              const isLiked =
-                likedIds.includes(String(brand.id)) ||
-                offers.some(
-                  (o) =>
-                    String(o.brand_id) === String(brand.id) &&
-                    likedIds.includes(String(o.id))
-                );
-              const brandOffers = offers.filter((o) => o.brand_id === brand.id);
-              const mainTitle =
-                brandOffers[0]?.title_uz ||
-                brand.tagline?.uz ||
-                `${brand.name} — talabalar uchun maxsus chegirma`;
+            {filteredCards.map((card) => {
+              const isLiked = api.isOfferLiked(card.id, likedIds);
 
               return (
                 <Link
-                  key={brand.id}
-                  to={`/brand/${brand.id}?cat=${category}`}
-                  onMouseEnter={() => api.prefetchBrand(brand.id)}
-                  className="group flex flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_18px_42px_-26px_rgba(0,45,150,0.3)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 dark:border-slate-800 dark:bg-slate-900/90"
+                  key={card.id}
+                  to={`/brand/${card.brandId}?cat=${category}&offer=${encodeURIComponent(card.id)}`}
+                  onMouseEnter={() => api.prefetchBrand(card.brandId)}
+                  className="group flex flex-col overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-[0_18px_42px_-26px_rgba(0,45,150,0.3)] transition-all duration-300 hover:-translate-y-1 dark:border-slate-800 dark:bg-slate-900"
                 >
                   <div
-                    className="relative flex h-40 w-full flex-col justify-between overflow-hidden rounded-[20px] p-4 text-white"
+                    className="relative h-44 w-full overflow-hidden"
                     style={{
-                      background: `linear-gradient(135deg, ${brand.accent || '#002D96'}, ${
-                        brand.accent2 || '#1D6FF2'
-                      })`,
+                      background: `linear-gradient(135deg, ${card.accent}, ${card.accent2})`,
                     }}
                   >
-                    {brand.cover_url && (
+                    {card.coverUrl && (
                       <img
-                        src={brand.cover_url}
-                        alt={brand.name}
+                        src={card.coverUrl}
+                        alt={card.brandName}
                         loading="lazy"
-                        className="absolute inset-0 h-full w-full object-cover opacity-35 transition-transform duration-500 group-hover:scale-105"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                     )}
-                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[76px] font-black text-white/15 select-none">
-                      {brand.monogram || (brand.name || 'I')[0]}
+
+                    {/* Pastki 25% dan boshlanuvchi progressiv blur */}
+                    <CardImageBlur direction="bottom" />
+
+                    <span className="absolute left-3 top-3 z-10 grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 text-[14px] font-black text-[#08123A] shadow-md">
+                      {card.logoUrl ? (
+                        <img
+                          src={card.logoUrl}
+                          alt={card.brandName}
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <span style={{ color: card.accent }}>{card.monogram}</span>
+                      )}
                     </span>
 
-                    <div className="relative z-10 flex items-start justify-between">
-                      <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-2xl bg-white p-1 text-[13px] font-black text-[#08123A]">
-                        {brand.logo_url ? (
-                          <img
-                            src={brand.logo_url}
-                            alt={brand.name}
-                            className="h-full w-full object-contain"
-                          />
-                        ) : (
-                          brand.monogram || (brand.name || 'I')[0]
+                    <span className="absolute bottom-2.5 left-3 z-10 inline-block rounded-full bg-white/95 px-2.5 py-0.5 text-[11px] font-black text-[#002D96] shadow-sm">
+                      {card.discount}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleLike(e, card.id)}
+                      aria-label="Chegirmani saqlash"
+                      className="absolute bottom-2 right-3 z-20 grid h-9 w-9 place-items-center rounded-full border border-slate-200/80 bg-white text-[#08123A] shadow-md transition-transform hover:scale-110 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    >
+                      <Heart
+                        className={cn(
+                          'h-4 w-4 transition-colors',
+                          isLiked
+                            ? 'fill-rose-500 text-rose-500'
+                            : 'fill-transparent text-[#08123A] dark:text-slate-200'
                         )}
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={(e) => handleToggleLike(e, brand.id)}
-                        aria-label="Saqlash"
-                        className="grid h-9 w-9 place-items-center rounded-full border border-white/80 bg-white/95 text-[#08123A] shadow-sm backdrop-blur-md transition-transform hover:scale-110"
-                      >
-                        <Heart
-                          className={cn(
-                            'h-4 w-4 transition-colors',
-                            isLiked ? 'fill-rose-500 text-rose-500' : 'fill-transparent text-slate-700'
-                          )}
-                        />
-                      </button>
-                    </div>
-
-                    <div className="relative z-10">
-                      <span className="inline-block rounded-full bg-white px-3 py-1 text-[11.5px] font-black text-[#08123A]">
-                        {brand.discount || '-20%'}
-                      </span>
-                    </div>
+                      />
+                    </button>
                   </div>
 
-                  <div className="flex flex-1 flex-col justify-between px-2 pb-2 pt-3">
+                  <div className="flex flex-1 flex-col justify-between p-4 pt-2.5">
                     <div>
-                      <p className="text-[11.5px] font-bold text-slate-400">{brand.name}</p>
-                      <h3 className="mt-0.5 line-clamp-2 text-[14.5px] font-extrabold leading-snug text-[#08123A] dark:text-slate-100">
-                        {brand.discount} · {mainTitle}
+                      <p className="text-[11.5px] font-bold text-slate-400">{card.brandName}</p>
+                      <h3 className="mt-0.5 line-clamp-2 text-[14px] font-extrabold leading-snug text-[#08123A] group-hover:text-[#002D96] dark:text-slate-100 dark:group-hover:text-sky-400">
+                        {card.discount} · {card.title}
                       </h3>
                     </div>
 
                     <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-[11px] font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400">
                       <span className="inline-flex items-center gap-1">
-                        {brand.redemption === 'app' ? (
+                        {card.redemption === 'app' ? (
                           <Smartphone className="h-3.5 w-3.5 text-[#1D6FF2] dark:text-sky-400" />
                         ) : (
                           <QrCode className="h-3.5 w-3.5 text-[#1D6FF2] dark:text-sky-400" />
                         )}
-                        {brand.redemption === 'app' ? 'Ilova orqali' : 'QR-kod'}
+                        {card.redemption === 'app' ? 'Online' : 'Kassada'}
                       </span>
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 font-extrabold text-amber-600 dark:text-amber-300">
                         <Flame className="h-3 w-3" />
-                        {brand.activations_count || 240} aktivatsiya
+                        {Number(card.activations).toLocaleString()} aktivatsiya
                       </span>
                     </div>
                   </div>
