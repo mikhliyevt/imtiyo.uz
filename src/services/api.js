@@ -13,8 +13,74 @@ const STORAGE_KEYS = {
   BRAND_EXTRAS: 'imtiyo_brand_extras_v1',
   OFFER_EXTRAS: 'imtiyo_offer_extras_v1',
   PROFILE_REVIEWS: 'imtiyo_profile_reviews_v1',
+  PROFILE_EXTRAS: 'imtiyo_profile_extras_v1',
   ADMIN_PERMISSIONS: 'imtiyo_admin_permissions_v1',
 };
+
+export const COURSE_OPTIONS = ['1', '2', '3', '4', '5', '6'];
+
+export function normalizeCourse(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const str = String(value).replace(/\D/g, '').trim();
+  return COURSE_OPTIONS.includes(str) ? str : '';
+}
+
+export const AVAILABLE_SECTIONS = [
+  { id: 'recommended', label: 'Tavsiya etilganlar' },
+  { id: 'new', label: 'Yangilar' },
+  { id: 'popular', label: 'Ommabop' },
+];
+
+// In-memory TTL cache + in-flight request deduplication (prevents duplicate & waterfall API calls)
+const CACHE_TTL_MS = 60 * 1000;
+const memoryCache = new Map();
+const inFlightMap = new Map();
+
+function getCached(key) {
+  const entry = memoryCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCached(key, data) {
+  memoryCache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
+function invalidateCache(prefix = '') {
+  if (!prefix) {
+    memoryCache.clear();
+    return;
+  }
+  for (const key of memoryCache.keys()) {
+    if (key.startsWith(prefix)) memoryCache.delete(key);
+  }
+}
+
+async function cachedRequest(key, fetcher, force = false) {
+  if (!force) {
+    const hit = getCached(key);
+    if (hit !== null) return hit;
+    if (inFlightMap.has(key)) return inFlightMap.get(key);
+  }
+  const promise = Promise.resolve()
+    .then(fetcher)
+    .then((res) => {
+      setCached(key, res);
+      inFlightMap.delete(key);
+      return res;
+    })
+    .catch((err) => {
+      inFlightMap.delete(key);
+      throw err;
+    });
+  inFlightMap.set(key, promise);
+  return promise;
+}
 
 export const DEFAULT_CATEGORIES = [
   { id: 'all', label_uz: 'Tavsiya etilganlar', label_ru: 'Рекомендуемые', label_en: 'Recommended', icon: 'Sparkles', sort_order: 1 },
@@ -325,6 +391,12 @@ const mapLocation = (r) => ({
 const mapProfile = (r) => {
   const reviewsMap = readLocal(STORAGE_KEYS.PROFILE_REVIEWS, {});
   const localReview = reviewsMap[r.id] || {};
+  const extrasMap = readLocal(STORAGE_KEYS.PROFILE_EXTRAS, {});
+  const localExtra =
+    extrasMap[r.id] ||
+    (r.email ? extrasMap[String(r.email).toLowerCase()] : null) ||
+    {};
+  const courseVal = normalizeCourse(r.course ?? localExtra.course ?? '');
   return {
     id: r.id,
     name: r.full_name || r.name || '',
@@ -332,6 +404,7 @@ const mapProfile = (r) => {
     email: r.email || '',
     phone: r.phone || '',
     university: r.university || '',
+    course: courseVal,
     gender: r.gender || '',
     birth_date: r.birth_date || '',
     region: r.region || '',
@@ -354,6 +427,11 @@ const mapProfile = (r) => {
 
 let seedPromise = null;
 async function ensureInitialSeed() {
+  try {
+    if (sessionStorage.getItem('imtiyo_seed_checked_v1') === '1') return;
+  } catch {
+    /* ignore */
+  }
   if (seedPromise) return seedPromise;
   seedPromise = (async () => {
     try {
@@ -417,6 +495,11 @@ async function ensureInitialSeed() {
           lng: l.lng,
         }));
         await supabase.from('locations').upsert(locRows);
+      }
+      try {
+        sessionStorage.setItem('imtiyo_seed_checked_v1', '1');
+      } catch {
+        /* ignore */
       }
     } catch {
       /* fallback */
@@ -647,25 +730,31 @@ export const api = {
   },
 
   // --- CATEGORIES ---
-  async listCategories() {
-    try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('sort_order', { ascending: true });
-      if (!error && Array.isArray(data) && data.length > 0) {
-        writeLocal(STORAGE_KEYS.CATEGORIES, data);
-        return data;
-      }
-    } catch {
-      /* fallback */
-    }
-    const local = readLocal(STORAGE_KEYS.CATEGORIES, null);
-    if (Array.isArray(local) && local.length > 0) {
-      return [...local].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    }
-    writeLocal(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
-    return DEFAULT_CATEGORIES;
+  async listCategories(force = false) {
+    return cachedRequest(
+      'categories',
+      async () => {
+        try {
+          const { data, error } = await supabase
+            .from('categories')
+            .select('*')
+            .order('sort_order', { ascending: true });
+          if (!error && Array.isArray(data) && data.length > 0) {
+            writeLocal(STORAGE_KEYS.CATEGORIES, data);
+            return data;
+          }
+        } catch {
+          /* fallback */
+        }
+        const local = readLocal(STORAGE_KEYS.CATEGORIES, null);
+        if (Array.isArray(local) && local.length > 0) {
+          return [...local].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        }
+        writeLocal(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+        return DEFAULT_CATEGORIES;
+      },
+      force
+    );
   },
 
   async saveCategory(cat) {
@@ -692,6 +781,7 @@ export const api = {
         : [...current, record];
 
     writeLocal(STORAGE_KEYS.CATEGORIES, next);
+    setCached('categories', next);
     try {
       await supabase.from('categories').upsert(record, { onConflict: 'id' });
     } catch {
@@ -706,6 +796,7 @@ export const api = {
     const current = await this.listCategories();
     const next = current.filter((c) => c.id !== catId);
     writeLocal(STORAGE_KEYS.CATEGORIES, next);
+    setCached('categories', next);
     try {
       await supabase.from('categories').delete().eq('id', catId);
     } catch {
@@ -718,6 +809,7 @@ export const api = {
   async reorderCategories(orderedList) {
     const normalized = orderedList.map((c, idx) => ({ ...c, sort_order: idx + 1 }));
     writeLocal(STORAGE_KEYS.CATEGORIES, normalized);
+    setCached('categories', normalized);
     try {
       await supabase.from('categories').upsert(normalized, { onConflict: 'id' });
     } catch {
@@ -728,24 +820,50 @@ export const api = {
   },
 
   // --- BRANDS ---
-  async listBrands() {
-    await ensureInitialSeed();
-    const [brandsRes, allOffers] = await Promise.all([
-      supabase.from('brands').select('*').order('sort_order', { ascending: false }),
-      this.listAllOffers().catch(() => []),
-    ]);
-    const rawBrands = brandsRes.error || !brandsRes.data ? sampleBrands : brandsRes.data;
-    return rawBrands.map((b) => mapBrand(b, allOffers));
+  async listBrands(force = false) {
+    return cachedRequest(
+      'brands:all',
+      async () => {
+        await ensureInitialSeed();
+        const [brandsRes, allOffers] = await Promise.all([
+          supabase.from('brands').select('*').order('sort_order', { ascending: false }),
+          this.listAllOffers(force).catch(() => []),
+        ]);
+        const rawBrands = brandsRes.error || !brandsRes.data ? sampleBrands : brandsRes.data;
+        return rawBrands.map((b) => mapBrand(b, allOffers));
+      },
+      force
+    );
   },
 
-  async getBrand(slug) {
-    const [brandRes, brandOffers] = await Promise.all([
-      supabase.from('brands').select('*').or(`slug.eq.${slug},id.eq.${slug}`).maybeSingle(),
-      this.listOffers(slug).catch(() => []),
-    ]);
-    if (brandRes.data) return mapBrand(brandRes.data, brandOffers);
-    const fallback = sampleBrands.find((b) => b.id === slug);
-    return fallback ? mapBrand(fallback, brandOffers) : null;
+  async getBrand(slug, force = false) {
+    if (!force) {
+      const cachedBrands = getCached('brands:all');
+      if (Array.isArray(cachedBrands)) {
+        const match = cachedBrands.find((b) => String(b.id) === String(slug));
+        if (match) return match;
+      }
+    }
+    return cachedRequest(
+      `brand:${slug}`,
+      async () => {
+        const [brandRes, brandOffers] = await Promise.all([
+          supabase.from('brands').select('*').or(`slug.eq.${slug},id.eq.${slug}`).maybeSingle(),
+          this.listOffers(slug).catch(() => []),
+        ]);
+        if (brandRes.data) return mapBrand(brandRes.data, brandOffers);
+        const fallback = sampleBrands.find((b) => b.id === slug);
+        return fallback ? mapBrand(fallback, brandOffers) : null;
+      },
+      force
+    );
+  },
+
+  prefetchBrand(slug) {
+    if (!slug) return;
+    this.getBrand(slug).catch(() => {});
+    this.listOffers(slug).catch(() => {});
+    this.listLocations(slug).catch(() => {});
   },
 
   async createBrand(data) {
@@ -818,6 +936,9 @@ export const api = {
       .insert(record)
       .select()
       .single();
+    invalidateCache('brands:');
+    invalidateCache('brand:');
+    invalidateCache('locations:');
     if (error) return mapBrand(record, []);
     return mapBrand(inserted, []);
   },
@@ -899,9 +1020,12 @@ export const api = {
       .select()
       .maybeSingle();
 
-    const offers = await this.listOffers(brandId).catch(() => []);
+    const offers = await this.listOffers(brandId, true).catch(() => []);
+    invalidateCache('brands:');
+    invalidateCache('brand:');
+    invalidateCache('locations:');
     if (error || !updated) {
-      const existing = await this.getBrand(brandId);
+      const existing = await this.getBrand(brandId, true);
       return existing ? mapBrand({ ...existing, ...payload }, offers) : null;
     }
     return mapBrand(updated, offers);
@@ -911,51 +1035,78 @@ export const api = {
     await supabase.from('offers').delete().eq('brand_id', brandId);
     await supabase.from('locations').delete().eq('brand_id', brandId);
     await supabase.from('brands').delete().or(`slug.eq.${brandId},id.eq.${brandId}`);
+    invalidateCache('brands:');
+    invalidateCache('brand:');
+    invalidateCache('offers:');
+    invalidateCache('locations:');
     return true;
   },
 
   // --- LOCATIONS ---
-  async listLocations(brandId = null) {
-    await ensureInitialSeed();
-    if (brandId) {
-      const brandExtrasMap = readLocal(STORAGE_KEYS.BRAND_EXTRAS, {});
-      const extras = brandExtrasMap[brandId];
-      if (extras && extras.has_map === false) return [];
-      if (extras && Array.isArray(extras.locations) && extras.locations.length > 0) {
-        return extras.locations.map(mapLocation);
-      }
-    }
-    let q = supabase.from('locations').select('*');
-    if (brandId) q = q.eq('brand_id', brandId);
-    const { data, error } = await q;
-    if (error || !data) {
-      const fallback = brandId
-        ? sampleLocations.filter((l) => String(l.brand_id) === String(brandId))
-        : sampleLocations;
-      return fallback.map(mapLocation);
-    }
-    return data.map(mapLocation);
+  async listLocations(brandId = null, force = false) {
+    const cacheKey = `locations:${brandId || 'all'}`;
+    return cachedRequest(
+      cacheKey,
+      async () => {
+        await ensureInitialSeed();
+        if (brandId) {
+          const brandExtrasMap = readLocal(STORAGE_KEYS.BRAND_EXTRAS, {});
+          const extras = brandExtrasMap[brandId];
+          if (extras && extras.has_map === false) return [];
+          if (extras && Array.isArray(extras.locations) && extras.locations.length > 0) {
+            return extras.locations.map(mapLocation);
+          }
+        }
+        let q = supabase.from('locations').select('*');
+        if (brandId) q = q.eq('brand_id', brandId);
+        const { data, error } = await q;
+        if (error || !data) {
+          const fallback = brandId
+            ? sampleLocations.filter((l) => String(l.brand_id) === String(brandId))
+            : sampleLocations;
+          return fallback.map(mapLocation);
+        }
+        return data.map(mapLocation);
+      },
+      force
+    );
   },
 
   // --- OFFERS ---
-  async listOffers(brandId) {
-    const { data, error } = await supabase
-      .from('offers')
-      .select('*')
-      .eq('brand_id', brandId)
-      .order('sort_order', { ascending: false });
-    if (error || !data) return [];
-    return data.map(mapOffer);
+  async listOffers(brandId, force = false) {
+    return cachedRequest(
+      `offers:${brandId}`,
+      async () => {
+        const { data, error } = await supabase
+          .from('offers')
+          .select('*')
+          .eq('brand_id', brandId)
+          .order('sort_order', { ascending: false });
+        if (error || !data) {
+          return sampleOffers
+            .filter((o) => String(o.brand_id) === String(brandId))
+            .map(mapOffer);
+        }
+        return data.map(mapOffer);
+      },
+      force
+    );
   },
 
-  async listAllOffers() {
-    await ensureInitialSeed();
-    const { data, error } = await supabase
-      .from('offers')
-      .select('*')
-      .order('sort_order', { ascending: false });
-    if (error || !data) return sampleOffers.map(mapOffer);
-    return data.map(mapOffer);
+  async listAllOffers(force = false) {
+    return cachedRequest(
+      'offers:all',
+      async () => {
+        await ensureInitialSeed();
+        const { data, error } = await supabase
+          .from('offers')
+          .select('*')
+          .order('sort_order', { ascending: false });
+        if (error || !data) return sampleOffers.map(mapOffer);
+        return data.map(mapOffer);
+      },
+      force
+    );
   },
 
   async createOffer(data) {
@@ -1006,7 +1157,10 @@ export const api = {
       .single();
 
     // Agar "Eng zo'r chegirma" bo'lsa yoki brendning 1-chegirmasi bo'lsa, brend yorlig'ini avtomatik yangilaymiz
-    const existingOffers = await this.listOffers(data.brand_id).catch(() => []);
+    invalidateCache('offers:');
+    invalidateCache('brands:');
+    invalidateCache('brand:');
+    const existingOffers = await this.listOffers(data.brand_id, true).catch(() => []);
     if (isBest || existingOffers.length <= 1) {
       await this.setBestOfferForBrand(data.brand_id, id, data.title_uz);
     }
@@ -1017,7 +1171,7 @@ export const api = {
 
   async setBestOfferForBrand(brandId, offerId, offerTitle = '') {
     const offerExtrasMap = readLocal(STORAGE_KEYS.OFFER_EXTRAS, {});
-    const brandOffers = await this.listOffers(brandId).catch(() => []);
+    const brandOffers = await this.listOffers(brandId, true).catch(() => []);
     brandOffers.forEach((o) => {
       offerExtrasMap[o.id] = {
         ...(offerExtrasMap[o.id] || {}),
@@ -1037,11 +1191,17 @@ export const api = {
       best_offer_id: offerId,
       best_offer_title: bestTitle,
     });
+    invalidateCache('offers:');
+    invalidateCache('brands:');
+    invalidateCache('brand:');
     return true;
   },
 
   async deleteOffer(id) {
     await supabase.from('offers').delete().eq('id', id);
+    invalidateCache('offers:');
+    invalidateCache('brands:');
+    invalidateCache('brand:');
     return true;
   },
 
@@ -1056,6 +1216,46 @@ export const api = {
     return mapProfile(DEMO_STUDENT);
   },
 
+  async findProfile({ id = '', email = '', phone = '' } = {}) {
+    try {
+      if (id) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) return mapProfile(data);
+      }
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      if (cleanEmail) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .limit(1)
+          .maybeSingle();
+        if (data) return mapProfile(data);
+      }
+      const digits = String(phone || '').replace(/\D/g, '').slice(-9);
+      if (digits.length === 9) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('phone', `%${digits.slice(-4)}`)
+          .limit(20);
+        if (Array.isArray(data)) {
+          const hit = data.find(
+            (p) => p.phone && p.phone.replace(/\D/g, '').slice(-9) === digits
+          );
+          if (hit) return mapProfile(hit);
+        }
+      }
+    } catch {
+      /* fallback */
+    }
+    return null;
+  },
+
   async listProfiles() {
     const { data, error } = await supabase
       .from('profiles')
@@ -1067,12 +1267,15 @@ export const api = {
 
   async createProfile(data) {
     const now = new Date().toISOString();
+    const courseStr = normalizeCourse(data.course);
+    const id = 'stu-' + Date.now();
     const record = {
-      id: 'stu-' + Date.now(),
+      id,
       full_name: data.full_name || data.name || 'Talaba',
       email: data.email || '',
       phone: data.phone || '',
       university: data.university || '',
+      course: courseStr ? Number(courseStr) : null,
       gender: data.gender || '',
       birth_date: data.birth_date || '',
       region: data.region || '',
@@ -1087,12 +1290,35 @@ export const api = {
       last_login: now,
       rejection_reason: '',
     };
+
+    if (courseStr) {
+      const extrasMap = readLocal(STORAGE_KEYS.PROFILE_EXTRAS, {});
+      extrasMap[id] = { ...(extrasMap[id] || {}), course: courseStr };
+      if (record.email) {
+        extrasMap[record.email.toLowerCase()] = {
+          ...(extrasMap[record.email.toLowerCase()] || {}),
+          course: courseStr,
+        };
+      }
+      writeLocal(STORAGE_KEYS.PROFILE_EXTRAS, extrasMap);
+    }
+
     const { data: inserted, error } = await supabase
       .from('profiles')
       .insert(record)
       .select()
       .single();
-    if (error) return mapProfile(record);
+    if (error) {
+      // Fallback if DB column `course` migration has not been applied yet
+      const safeRecord = { ...record };
+      delete safeRecord.course;
+      const { data: retryInserted } = await supabase
+        .from('profiles')
+        .insert(safeRecord)
+        .select()
+        .single();
+      return mapProfile(retryInserted ? { ...retryInserted, course: courseStr } : record);
+    }
     return mapProfile(inserted);
   },
 
@@ -1101,6 +1327,16 @@ export const api = {
     if (payload.name && !payload.full_name) {
       payload.full_name = payload.name;
       delete payload.name;
+    } else if ('name' in payload) {
+      delete payload.name;
+    }
+
+    if ('course' in payload) {
+      const courseStr = normalizeCourse(payload.course);
+      payload.course = courseStr ? Number(courseStr) : null;
+      const extrasMap = readLocal(STORAGE_KEYS.PROFILE_EXTRAS, {});
+      extrasMap[id] = { ...(extrasMap[id] || {}), course: courseStr };
+      writeLocal(STORAGE_KEYS.PROFILE_EXTRAS, extrasMap);
     }
 
     if ('rejection_reason' in payload || 'reviewed_by' in payload) {
@@ -1127,13 +1363,23 @@ export const api = {
       const safePayload = { ...payload };
       delete safePayload.reviewed_by;
       delete safePayload.reviewed_at;
-      const { data: retryUpdated } = await supabase
+      const { data: retry1, error: err1 } = await supabase
         .from('profiles')
         .update(safePayload)
         .eq('id', id)
         .select()
         .maybeSingle();
-      return retryUpdated ? mapProfile(retryUpdated) : null;
+      if (!err1 && retry1) return mapProfile(retry1);
+
+      // Second retry without `course` column in case migration isn't run yet
+      delete safePayload.course;
+      const { data: retry2 } = await supabase
+        .from('profiles')
+        .update(safePayload)
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+      return retry2 ? mapProfile(retry2) : null;
     }
     return updated ? mapProfile(updated) : null;
   },
@@ -1195,19 +1441,25 @@ export const api = {
   },
 
   // --- UNIVERSITIES ---
-  async listUniversities() {
-    const { data, error } = await supabase
-      .from('universities')
-      .select('*')
-      .order('name', { ascending: true });
-    if (error || !data) return [];
-    return [...data].sort((a, b) =>
-      String(a.name || '').localeCompare(String(b.name || ''), 'uz')
+  async listUniversities(force = false) {
+    return cachedRequest(
+      'universities',
+      async () => {
+        const { data, error } = await supabase
+          .from('universities')
+          .select('*')
+          .order('name', { ascending: true });
+        if (error || !data) return [];
+        return [...data].sort((a, b) =>
+          String(a.name || '').localeCompare(String(b.name || ''), 'uz')
+        );
+      },
+      force
     );
   },
 
   async listUniversitiesAdmin() {
-    return this.listUniversities();
+    return this.listUniversities(true);
   },
 
   async addUniversity(payload) {
@@ -1227,12 +1479,14 @@ export const api = {
     if (error) {
       await supabase.from('universities').upsert({ name: cleanName }, { onConflict: 'name' });
     }
+    invalidateCache('universities');
     return this.listUniversitiesAdmin();
   },
 
   async deleteUniversity(nameOrId) {
     const val = typeof nameOrId === 'object' ? nameOrId.name : nameOrId;
     await supabase.from('universities').delete().eq('name', val);
+    invalidateCache('universities');
     return this.listUniversitiesAdmin();
   },
 

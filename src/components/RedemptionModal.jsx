@@ -69,7 +69,7 @@ export default function RedemptionModal({ brand, offer, open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md overflow-hidden rounded-[26px] border-white/70 bg-white/90 p-0 backdrop-blur-2xl">
+      <DialogContent className="max-w-md overflow-hidden rounded-[26px] border-white/70 bg-white/95 p-0 backdrop-blur-2xl dark:border-slate-700 dark:bg-slate-900">
         <div
           className="relative p-6 text-white"
           style={{ background: `linear-gradient(135deg, ${brand.accent2}, ${brand.accent})` }}

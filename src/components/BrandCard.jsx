@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Flame, Heart, QrCode, Smartphone } from 'lucide-react';
 import { Image } from '@/components/ui/image';
+import { openAuthPromptModal } from '@/components/AppShell';
+import { useStudent } from '@/lib/StudentContext';
 import { api } from '@/services/api';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +17,7 @@ const categoryKey = {
 };
 
 export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
+  const { profile } = useStudent();
   const itemKey = offer ? `offer:${offer.id}` : `brand:${brand.id}`;
   const [liked, setLiked] = useState(() => api.getLikedIds().includes(itemKey));
 
@@ -27,6 +30,10 @@ export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
   const handleLike = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!profile?.signedIn) {
+      openAuthPromptModal('like');
+      return;
+    }
     api.toggleLike(itemKey);
   };
 
@@ -43,8 +50,9 @@ export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
   return (
     <Link
       to={`/brand/${brand.id}`}
+      onMouseEnter={() => api.prefetchBrand(brand.id)}
       className={cn(
-        'group relative flex flex-col overflow-hidden rounded-[22px] border border-white/80 bg-white/85 shadow-[0_14px_34px_-22px_rgba(0,45,150,0.45)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_44px_-22px_rgba(0,45,150,0.5)]',
+        'group relative flex flex-col overflow-hidden rounded-[22px] border border-slate-200/80 bg-white/90 shadow-[0_14px_34px_-22px_rgba(0,45,150,0.45)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_44px_-22px_rgba(0,45,150,0.5)] dark:border-slate-800 dark:bg-slate-900/90',
         className
       )}
     >
@@ -106,7 +114,7 @@ export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
       {/* Kontent */}
       <div className="flex flex-1 flex-col p-3.5">
         <p className="truncate text-[11px] font-semibold text-slate-400">{brand.name}</p>
-        <p className="mt-0.5 line-clamp-2 text-[13.5px] font-extrabold leading-snug text-[#08123A]">
+        <p className="mt-0.5 line-clamp-2 text-[13.5px] font-extrabold leading-snug text-[#08123A] dark:text-slate-100">
           {headline}
         </p>
 
@@ -119,7 +127,7 @@ export default function BrandCard({ brand, offer, t, lang = 'uz', className }) {
 
         {/* Aktivatsiyalar soni */}
         <div className="mt-3 pt-1">
-          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10.5px] font-bold text-orange-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10.5px] font-bold text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
             <Flame className="h-3 w-3 fill-orange-500 text-orange-500" />
             {activations.toLocaleString()} aktivatsiya
           </span>

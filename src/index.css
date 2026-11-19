@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,81 +5,91 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --foreground: 228 76% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 228 76% 13%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
+    --popover-foreground: 228 76% 13%;
+    --primary: 222 100% 29%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --secondary: 220 40% 96%;
+    --secondary-foreground: 228 76% 13%;
+    --muted: 220 25% 95%;
+    --muted-foreground: 215 16% 45%;
+    --accent: 217 90% 53%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
+    --border: 220 20% 90%;
+    --input: 220 20% 90%;
+    --ring: 217 90% 53%;
+    --chart-1: 222 100% 36%;
+    --chart-2: 199 100% 50%;
+    --chart-3: 263 70% 50%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --radius: 0.75rem;
     --font-heading: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
     --font-body: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
     --font-display: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: 222 100% 29%;
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-accent: 220 35% 95%;
+    --sidebar-accent-foreground: 228 76% 13%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* IMTIYO Glass & Motion Tokens */
+    --glass-bg: rgba(255, 255, 255, 0.68);
+    --glass-bg-hover: rgba(255, 255, 255, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.85);
+    --glass-shadow: 0 8px 28px -10px rgba(0, 45, 150, 0.16);
+    --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 225 63% 7%;
+    --foreground: 210 40% 96%;
+    --card: 223 47% 11%;
+    --card-foreground: 210 40% 96%;
+    --popover: 223 47% 11%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 225 63% 7%;
+    --secondary: 222 38% 16%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 222 35% 16%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 40%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
+    --border: 220 30% 20%;
+    --input: 220 30% 20%;
+    --ring: 217 91% 60%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 199 95% 55%;
+    --chart-3: 263 80% 65%;
+    --chart-4: 43 80% 60%;
     --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-background: 224 52% 9%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-accent: 223 40% 16%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 32% 18%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --glass-bg: rgba(15, 23, 46, 0.64);
+    --glass-bg-hover: rgba(24, 36, 68, 0.82);
+    --glass-border: rgba(148, 163, 184, 0.18);
+    --glass-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.55);
   }
 }
-
-
 
 @layer base {
   * {
@@ -89,19 +97,51 @@
   }
 
   body {
-    @apply bg-background text-foreground font-body antialiased;
+    @apply bg-white text-[#08123A] font-body antialiased transition-colors duration-200 dark:bg-[#070d1f] dark:text-slate-100;
   }
 }
 
-/* Leaflet map, styled to match the liquid-glass surfaces */
+/* Reusable Glassmorphism Header Pill Utility */
+.imtiyo-glass-pill {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.imtiyo-glass-pill:hover {
+  background: var(--glass-bg-hover);
+}
+
+.dark .imtiyo-glass-pill {
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* =========================================================
+   LEAFLET MAP (Light & Dark Mode)
+   ========================================================= */
 .leaflet-container {
   font-family: var(--font-body);
   background: #e9f0fb;
   z-index: 0;
 }
 
+.dark .leaflet-container {
+  background: #0d1630;
+}
+
+.dark .leaflet-tile-pane {
+  filter: brightness(0.78) invert(1) contrast(0.92) hue-rotate(200deg) saturate(0.45);
+}
+
 .leaflet-container a {
   color: #002d96;
+}
+
+.dark .leaflet-container a {
+  color: #60a5fa;
 }
 
 .imtiyo-pin {
@@ -111,13 +151,23 @@
 
 .leaflet-popup-content-wrapper {
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(14px);
   box-shadow: 0 18px 40px -18px rgba(0, 45, 150, 0.5);
 }
 
+.dark .leaflet-popup-content-wrapper {
+  background: rgba(15, 23, 42, 0.95);
+  color: #f1f5f9;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 .leaflet-popup-tip {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.dark .leaflet-popup-tip {
+  background: rgba(15, 23, 42, 0.95);
 }
 
 .leaflet-popup-content {
@@ -126,81 +176,39 @@
 
 .leaflet-control-attribution {
   font-size: 9px;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.72) !important;
 }
 
-
-/* =========================================================
-   GLOBAL DARK MODE OVERRIDES (Butun platforma uchun)
-   ========================================================= */
-html.dark body {
-  background-color: #070d1f !important;
-  color: #f1f5f9 !important;
-}
-
-html.dark .bg-\[\#F5F8FF\],
-html.dark .bg-\[\#F3F7FF\] {
-  background-color: #070d1f !important;
-}
-
-html.dark .bg-white,
-html.dark .bg-white\/90,
-html.dark .bg-white\/85,
-html.dark .bg-white\/80,
-html.dark .bg-white\/75,
-html.dark .bg-white\/70,
-html.dark .bg-white\/65,
-html.dark .bg-white\/60,
-html.dark .bg-white\/50 {
-  background-color: rgba(15, 23, 42, 0.88) !important;
-  color: #f1f5f9 !important;
-}
-
-html.dark .bg-slate-50,
-html.dark .bg-slate-50\/90,
-html.dark .bg-slate-50\/80,
-html.dark .bg-slate-50\/70,
-html.dark .bg-slate-50\/60,
-html.dark .bg-slate-100 {
-  background-color: rgba(30, 41, 59, 0.75) !important;
-  color: #e2e8f0 !important;
-}
-
-html.dark .text-\[\#08123A\] {
-  color: #f8fafc !important;
-}
-
-html.dark .text-\[\#002D96\] {
-  color: #60a5fa !important;
-}
-
-html.dark .text-slate-600,
-html.dark .text-slate-500 {
+.dark .leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.75) !important;
   color: #94a3b8 !important;
 }
 
-html.dark .border-white,
-html.dark .border-white\/90,
-html.dark .border-white\/85,
-html.dark .border-white\/80,
-html.dark .border-white\/70,
-html.dark .border-white\/60,
-html.dark .border-slate-100,
-html.dark .border-slate-200,
-html.dark .border-slate-200\/80 {
-  border-color: rgba(51, 65, 85, 0.65) !important;
+/* =========================================================
+   GLOBAL DARK MODE SAFETY LAYER
+   (Ensures inputs, selects & legacy components stay crisp)
+   ========================================================= */
+html.dark body {
+  background-color: #070d1f;
+  color: #f1f5f9;
 }
 
 html.dark input,
 html.dark select,
 html.dark textarea {
-  color: #f8fafc !important;
+  color: #f8fafc;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b;
 }
 
 html.dark select option {
   background-color: #0f172a;
   color: #f8fafc;
 }
+
 /* =========================================================
    TOP MARQUEE INFINITE ANIMATION
    ========================================================= */
@@ -221,4 +229,492 @@ html.dark select option {
 
 .imtiyo-marquee-track:hover {
   animation-play-state: paused;
+}
+
+/* =========================================================
+   PROGRESSIVE MULTI-LAYER BLUR FOR SIDE CAROUSEL PEEK SLIDES
+   (Center-side half stays sharp; outer half blurs 25% -> 50% -> 75%)
+   ========================================================= */
+.imtiyo-blur-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  transition: opacity 0.35s ease;
+}
+
+/* LEFT PEEK SLIDE: right side (near center) is crisp, left outer half progressively blurs */
+.imtiyo-blur-left-1 {
+  backdrop-filter: blur(2.5px);
+  -webkit-backdrop-filter: blur(2.5px);
+  mask-image: linear-gradient(to left, transparent 38%, rgba(0, 0, 0, 0.55) 56%, black 72%);
+  -webkit-mask-image: linear-gradient(to left, transparent 38%, rgba(0, 0, 0, 0.55) 56%, black 72%);
+}
+
+.imtiyo-blur-left-2 {
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  mask-image: linear-gradient(to left, transparent 54%, rgba(0, 0, 0, 0.65) 74%, black 88%);
+  -webkit-mask-image: linear-gradient(to left, transparent 54%, rgba(0, 0, 0, 0.65) 74%, black 88%);
+}
+
+.imtiyo-blur-left-3 {
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  mask-image: linear-gradient(to left, transparent 70%, rgba(0, 0, 0, 0.78) 86%, black 100%);
+  -webkit-mask-image: linear-gradient(to left, transparent 70%, rgba(0, 0, 0, 0.78) 86%, black 100%);
+}
+
+/* RIGHT PEEK SLIDE: exact mirror — left side (near center) is crisp, right outer half progressively blurs */
+.imtiyo-blur-right-1 {
+  backdrop-filter: blur(2.5px);
+  -webkit-backdrop-filter: blur(2.5px);
+  mask-image: linear-gradient(to right, transparent 38%, rgba(0, 0, 0, 0.55) 56%, black 72%);
+  -webkit-mask-image: linear-gradient(to right, transparent 38%, rgba(0, 0, 0, 0.55) 56%, black 72%);
+}
+
+.imtiyo-blur-right-2 {
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  mask-image: linear-gradient(to right, transparent 54%, rgba(0, 0, 0, 0.65) 74%, black 88%);
+  -webkit-mask-image: linear-gradient(to right, transparent 54%, rgba(0, 0, 0, 0.65) 74%, black 88%);
+}
+
+.imtiyo-blur-right-3 {
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  mask-image: linear-gradient(to right, transparent 70%, rgba(0, 0, 0, 0.78) 86%, black 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 70%, rgba(0, 0, 0, 0.78) 86%, black 100%);
+}
+
+@keyframes imtiyoSlideNext {
+  from {
+    opacity: 0.72;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes imtiyoSlidePrev {
+  from {
+    opacity: 0.72;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.imtiyo-slide-enter-next {
+  animation: imtiyoSlideNext 0.42s var(--ease-spring) both;
+}
+
+.imtiyo-slide-enter-prev {
+  animation: imtiyoSlidePrev 0.42s var(--ease-spring) both;
+}
+
+/* =========================================================
+   UIVERSE #1 (satyamchaudharydev) — Auth Login <-> Register Switch
+   Adapted to IMTIYO brand colors (#002D96 / #1D6FF2 / #38BDF8)
+   ========================================================= */
+.imtiyo-auth-switch {
+  --primary-color: #08123a;
+  --hovered-color: #1d6ff2;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  font-weight: 700;
+  font-size: 15px;
+  gap: 0.45rem;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.dark .imtiyo-auth-switch {
+  --primary-color: #e2e8f0;
+  --hovered-color: #38bdf8;
+}
+
+.imtiyo-auth-switch p {
+  margin: 0;
+  position: relative;
+  font-size: 15px;
+  color: var(--primary-color);
+  white-space: nowrap;
+}
+
+.imtiyo-auth-switch::after {
+  position: absolute;
+  content: "";
+  width: 0;
+  left: 0;
+  bottom: -6px;
+  background: var(--hovered-color);
+  height: 2px;
+  border-radius: 999px;
+  transition: width 0.3s ease-out;
+}
+
+.imtiyo-auth-switch p::before {
+  position: absolute;
+  content: attr(data-text);
+  width: 0%;
+  inset: 0;
+  color: var(--hovered-color);
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width 0.3s ease-out;
+}
+
+.imtiyo-auth-switch:hover::after,
+.imtiyo-auth-switch:focus-visible::after {
+  width: 100%;
+}
+
+.imtiyo-auth-switch:hover p::before,
+.imtiyo-auth-switch:focus-visible p::before {
+  width: 100%;
+}
+
+.imtiyo-auth-switch svg {
+  color: var(--primary-color);
+  transition: transform 0.2s ease, color 0.2s ease;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  transition-delay: 0.12s;
+}
+
+.imtiyo-auth-switch:hover svg,
+.imtiyo-auth-switch:focus-visible svg {
+  transform: translateX(4px);
+  color: var(--hovered-color);
+}
+
+/* =========================================================
+   UIVERSE #2 (MuhammadHasann) — Guest Auth Prompt Card
+   Adapted to IMTIYO brand colors (Royal Blue & Electric Sky)
+   ========================================================= */
+.imtiyo-auth-card {
+  --white: #ffffff;
+  --black: #070d1f;
+  --paragraph: #cbd5e1;
+  --line: rgba(148, 163, 184, 0.2);
+  --primary: #1d6ff2;
+
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  padding: 1.35rem;
+  width: 100%;
+  max-width: 21.5rem;
+  background-color: #070d1f;
+  background-image:
+    radial-gradient(at 88% 35%, rgba(7, 13, 31, 1) 0px, transparent 85%),
+    radial-gradient(at 49% 25%, rgba(8, 18, 58, 0.95) 0px, transparent 85%),
+    radial-gradient(at 14% 22%, rgba(7, 13, 31, 0.95) 0px, transparent 85%),
+    radial-gradient(at 0% 68%, rgba(0, 45, 150, 0.92) 0px, transparent 82%),
+    radial-gradient(at 45% 96%, rgba(29, 111, 242, 0.72) 0px, transparent 82%),
+    radial-gradient(at 100% 98%, rgba(0, 169, 255, 0.65) 0px, transparent 82%);
+  border-radius: 1.25rem;
+  box-shadow:
+    0px -16px 24px 0px rgba(0, 169, 255, 0.18) inset,
+    0 28px 70px -16px rgba(0, 18, 66, 0.75);
+}
+
+.imtiyo-auth-card-wrap {
+  position: relative;
+  border-radius: 1.32rem;
+  padding: 2px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 21.75rem;
+  box-shadow: 0 30px 80px -15px rgba(0, 20, 70, 0.65);
+}
+
+.imtiyo-auth-card-wrap::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 220%;
+  height: 11rem;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background-image: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0) 0%,
+    #00a9ff 40%,
+    #1d6ff2 60%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: imtiyoCardBorderRotate 7s linear infinite;
+}
+
+@keyframes imtiyoCardBorderRotate {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.imtiyo-auth-card .card_title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--white);
+}
+
+.imtiyo-auth-card .card_paragraph {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--paragraph);
+}
+
+.imtiyo-auth-card .line {
+  width: 100%;
+  height: 1px;
+  background-color: var(--line);
+  border: none;
+}
+
+.imtiyo-auth-card .card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.imtiyo-auth-card .card__list_item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.imtiyo-auth-card .card__list_item .check {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  background: linear-gradient(135deg, #1d6ff2, #00a9ff);
+  border-radius: 50%;
+}
+
+.imtiyo-auth-card .card__list_item .list_text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.imtiyo-auth-card .imtiyo-auth-cta {
+  cursor: pointer;
+  padding: 0.65rem 1rem;
+  width: 100%;
+  background-image: linear-gradient(90deg, #002d96 0%, #1d6ff2 55%, #00a9ff 100%);
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--white);
+  border: 0;
+  border-radius: 9999px;
+  box-shadow:
+    inset 0 -2px 18px -4px rgba(255, 255, 255, 0.75),
+    0 12px 26px -10px rgba(0, 169, 255, 0.75);
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.imtiyo-auth-card .imtiyo-auth-cta:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+/* =========================================================
+   UIVERSE #3 (Jaareet) — Animated Help Message Inputs
+   Adapted to IMTIYO skyblue & clean light/dark themes
+   ========================================================= */
+.imtiyo-help-input {
+  width: 100%;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: #08123a;
+  background-color: #f8fafc;
+  box-shadow:
+    0 2px 10px rgba(0, 45, 150, 0.08),
+    0 0 0 1.5px rgba(203, 213, 225, 0.85);
+  border-radius: 14px;
+  border: none;
+  outline: none;
+  padding: 11px 15px;
+  transition: box-shadow 0.4s ease, background-color 0.3s ease, transform 0.25s ease;
+}
+
+.imtiyo-help-input:hover {
+  background-color: #ffffff;
+  box-shadow:
+    0 4px 14px rgba(0, 169, 255, 0.14),
+    0 0 0 2px rgba(29, 111, 242, 0.32);
+}
+
+.imtiyo-help-input:focus {
+  background-color: #ffffff;
+  box-shadow:
+    0 6px 20px rgba(0, 169, 255, 0.22),
+    0 0 0 2.5px #00a9ff;
+}
+
+.dark .imtiyo-help-input {
+  color: #f8fafc;
+  background-color: rgb(22, 30, 50);
+  box-shadow:
+    0 0 10px rgba(0, 0, 0, 0.45),
+    0 0 0 1.5px rgba(148, 163, 184, 0.18);
+}
+
+.dark .imtiyo-help-input:hover {
+  box-shadow:
+    0 0 12px rgba(0, 0, 0, 0.5),
+    0 0 0 2px rgba(0, 169, 255, 0.32);
+}
+
+.dark .imtiyo-help-input:focus {
+  background-color: rgb(26, 36, 60);
+  box-shadow:
+    0 0 18px rgba(0, 169, 255, 0.25),
+    0 0 0 2.5px #38bdf8;
+}
+
+/* =========================================================
+   UIVERSE #4 (mymiamo) — Liquid Glass Mobile Bottom Dock
+   ONLY for mobile screens (< md), adapted to IMTIYO blue
+   ========================================================= */
+.imtiyo-mobile-dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 440px;
+  backdrop-filter: blur(18px) saturate(180%) contrast(115%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%) contrast(115%);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 45, 150, 0.78) 0%,
+    rgba(29, 111, 242, 0.72) 60%,
+    rgba(0, 169, 255, 0.68) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow: 0 16px 38px -10px rgba(0, 45, 150, 0.48);
+  padding: 6px;
+  border-radius: 99rem;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  z-index: 45;
+}
+
+.dark .imtiyo-mobile-dock {
+  background: linear-gradient(
+    135deg,
+    rgba(10, 22, 54, 0.86) 0%,
+    rgba(16, 40, 96, 0.82) 100%
+  );
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.72);
+}
+
+.imtiyo-mobile-dock::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 2px 2px 6px -2px rgba(255, 255, 255, 0.42),
+    inset -2px -2px 6px 1px rgba(255, 255, 255, 0.25),
+    inset 0 -2px 0 rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.dark .imtiyo-mobile-dock::after {
+  box-shadow:
+    inset 1.5px 1.5px 5px -1px rgba(147, 197, 253, 0.22),
+    inset -1.5px -1.5px 5px -1px rgba(56, 189, 248, 0.14);
+}
+
+.imtiyo-mobile-dock a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.92);
+  text-decoration: none;
+  padding: 8px 6px;
+  border-radius: 999rem;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.2s var(--ease-spring),
+    color 0.2s var(--ease-spring),
+    transform 0.2s var(--ease-spring),
+    box-shadow 0.25s ease-in-out;
+}
+
+.imtiyo-mobile-dock a:hover {
+  background-color: rgba(255, 255, 255, 0.24);
+  box-shadow:
+    inset 2px 2px 5px -2px rgba(255, 255, 255, 0.45),
+    inset -2px -1px 5px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -2px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  color: #ffffff;
+}
+
+.imtiyo-mobile-dock a svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+.imtiyo-mobile-dock a span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.imtiyo-mobile-dock a.active {
+  background: rgba(255, 255, 255, 0.88);
+  color: #002d96;
+  box-shadow:
+    0 6px 16px -6px rgba(0, 20, 80, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.dark .imtiyo-mobile-dock a.active {
+  background: linear-gradient(135deg, #1d6ff2, #00a9ff);
+  color: #ffffff;
+  box-shadow: 0 6px 18px -6px rgba(0, 169, 255, 0.65);
+}
+
+.imtiyo-mobile-dock a:active {
+  transform: scale(0.95);
 }

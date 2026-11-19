@@ -4,7 +4,7 @@ import { Flame, Heart, QrCode, Search, Smartphone, Sparkles, X } from 'lucide-re
 import AppShell, { openAuthPromptModal } from '@/components/AppShell';
 import CategoryPills from '@/components/CategoryPills';
 import { useStudent } from '@/lib/StudentContext';
-import { api } from '@/services/api';
+import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { cn } from '@/lib/utils';
 
 export default function Explore() {
@@ -13,16 +13,28 @@ export default function Explore() {
 
   const [brands, setBrands] = useState([]);
   const [offers, setOffers] = useState([]);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [category, setCategory] = useState(searchParams.get('cat') || 'all');
   const [onlySaved, setOnlySaved] = useState(searchParams.get('saved') === '1');
   const [likedIds, setLikedIds] = useState(() => api.getLikedIds().map(String));
 
   useEffect(() => {
-    Promise.all([api.listBrands(), api.listAllOffers()]).then(([bList, oList]) => {
-      setBrands(Array.isArray(bList) ? bList : []);
-      setOffers(Array.isArray(oList) ? oList : []);
-    });
+    let active = true;
+    Promise.all([api.listBrands(), api.listAllOffers(), api.listCategories()])
+      .then(([bList, oList, cList]) => {
+        if (!active) return;
+        setBrands(Array.isArray(bList) ? bList : []);
+        setOffers(Array.isArray(oList) ? oList : []);
+        if (Array.isArray(cList) && cList.length) setCategories(cList);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -50,7 +62,8 @@ export default function Explore() {
       );
       const isBrandLiked =
         likedIds.includes(String(b.id)) ||
-        likedIds.includes(`brand-${b.id}`);
+        likedIds.includes(`brand-${b.id}`) ||
+        likedIds.includes(`brand:${b.id}`);
 
       const matchSaved = !onlySaved || isBrandLiked || hasLikedOffer;
       return matchCat && matchQuery && matchSaved;
@@ -67,54 +80,65 @@ export default function Explore() {
     api.toggleLike(id);
   };
 
+  const activeCategoryObj = categories.find((c) => c.id === category);
+  const breadcrumbs =
+    category !== 'all' && activeCategoryObj
+      ? [
+          { label: 'Chegirmalar', onClick: () => setCategory('all') },
+          { label: activeCategoryObj.label_uz },
+        ]
+      : [{ label: 'Chegirmalar va Qidiruv' }];
+
   return (
-    <AppShell hideSearch>
-      <div className="space-y-5">
+    <AppShell hideSearch breadcrumbs={breadcrumbs} showImtiyoAbout={category !== 'all'}>
+      <div className="space-y-5 pb-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-[24px] font-extrabold text-[#08123A]">Qidiruv</h1>
-            <p className="text-[12.5px] text-slate-500">
+            <h1 className="text-[24px] font-extrabold text-[#08123A] dark:text-white">
+              Chegirmalar va Qidiruv
+            </h1>
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
               Barcha hamkor brendlar va talaba chegirmalari ({filteredBrands.length} ta natija)
             </p>
           </div>
 
-          {/* SAQLANGANLAR FILTRI — ICHI OQ/SHAFFOF STILDA */}
           <button
             type="button"
             onClick={() => setOnlySaved((v) => !v)}
             className={cn(
               'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[12.5px] font-extrabold transition-all',
               onlySaved
-                ? 'border-[#08123A] bg-[#08123A] text-white shadow-sm'
-                : 'border-white/90 bg-white/90 text-[#002D96] hover:border-[#1D6FF2]'
+                ? 'border-[#002D96] bg-[#002D96] text-white shadow-sm dark:border-sky-400 dark:bg-sky-500'
+                : 'border-slate-200 bg-white/90 text-[#002D96] hover:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300'
             )}
           >
             <Heart
               className={cn(
                 'h-4 w-4',
-                onlySaved ? 'fill-white text-white' : 'fill-transparent text-[#002D96]'
+                onlySaved
+                  ? 'fill-white text-white'
+                  : 'fill-transparent text-[#002D96] dark:text-sky-300'
               )}
             />
             <span>Saqlanganlar ({likedIds.length})</span>
           </button>
         </div>
 
-        {/* KATTA QIDIRUV INPUTI */}
         <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#1D6FF2]" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#1D6FF2] dark:text-sky-400" />
           <input
             type="text"
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Hamkor brend, taom, sartaroshxona yoki chegirma qidiring..."
-            className="h-12 w-full rounded-full border border-white/90 bg-white/95 pl-12 pr-11 text-[14px] font-bold text-[#08123A] shadow-[0_18px_40px_-24px_rgba(0,45,150,0.45)] outline-none backdrop-blur-xl focus:border-[#1D6FF2]"
+            className="h-12 w-full rounded-full border border-slate-200/90 bg-white/95 pl-12 pr-11 text-[14px] font-bold text-[#08123A] shadow-[0_14px_32px_-22px_rgba(0,45,150,0.35)] outline-none backdrop-blur-xl focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-900/90 dark:text-white dark:focus:border-sky-400"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery('')}
-              className="absolute right-3.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-slate-100 text-slate-500"
+              className="absolute right-3.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300"
             >
               <X className="h-4 w-4" />
             </button>
@@ -123,13 +147,22 @@ export default function Explore() {
 
         <CategoryPills value={category} onChange={setCategory} />
 
-        {filteredBrands.length === 0 ? (
-          <div className="rounded-[26px] border border-dashed border-white/80 bg-white/70 py-14 text-center">
+        {loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-72 animate-pulse rounded-[26px] bg-slate-200/70 dark:bg-slate-800/80"
+              />
+            ))}
+          </div>
+        ) : filteredBrands.length === 0 ? (
+          <div className="rounded-[26px] border border-dashed border-slate-300 bg-white/80 py-14 text-center dark:border-slate-700 dark:bg-slate-900/60">
             <Sparkles className="mx-auto h-6 w-6 text-slate-400" />
-            <p className="mt-2 text-[14px] font-extrabold text-[#08123A]">
+            <p className="mt-2 text-[14px] font-extrabold text-[#08123A] dark:text-white">
               Mos chegirmalar topilmadi
             </p>
-            <p className="mt-1 text-[12px] text-slate-500">
+            <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
               Qidiruv so‘zini yoki kategoriyani o‘zgartirib ko‘ring.
             </p>
           </div>
@@ -152,8 +185,9 @@ export default function Explore() {
               return (
                 <Link
                   key={brand.id}
-                  to={`/brand/${brand.id}`}
-                  className="group flex flex-col overflow-hidden rounded-[26px] border border-white/85 bg-white/90 p-2.5 shadow-[0_18px_42px_-26px_rgba(0,45,150,0.45)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1"
+                  to={`/brand/${brand.id}?cat=${category}`}
+                  onMouseEnter={() => api.prefetchBrand(brand.id)}
+                  className="group flex flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_18px_42px_-26px_rgba(0,45,150,0.3)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 dark:border-slate-800 dark:bg-slate-900/90"
                 >
                   <div
                     className="relative flex h-40 w-full flex-col justify-between overflow-hidden rounded-[20px] p-4 text-white"
@@ -167,6 +201,7 @@ export default function Explore() {
                       <img
                         src={brand.cover_url}
                         alt={brand.name}
+                        loading="lazy"
                         className="absolute inset-0 h-full w-full object-cover opacity-35 transition-transform duration-500 group-hover:scale-105"
                       />
                     )}
@@ -175,34 +210,28 @@ export default function Explore() {
                     </span>
 
                     <div className="relative z-10 flex items-start justify-between">
-                      <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-2xl bg-white text-[13px] font-black text-[#08123A]">
+                      <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-2xl bg-white p-1 text-[13px] font-black text-[#08123A]">
                         {brand.logo_url ? (
                           <img
                             src={brand.logo_url}
                             alt={brand.name}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain"
                           />
                         ) : (
                           brand.monogram || (brand.name || 'I')[0]
                         )}
                       </span>
 
-                      {/* YURAKCHA TUGMASI — OQ/SHAFFOF STILDA */}
                       <button
                         type="button"
                         onClick={(e) => handleToggleLike(e, brand.id)}
                         aria-label="Saqlash"
-                        className={cn(
-                          'grid h-9 w-9 place-items-center rounded-full border shadow-xs backdrop-blur-md transition-transform hover:scale-110',
-                          isLiked
-                            ? 'border-white bg-white text-[#08123A]'
-                            : 'border-white/70 bg-white/85 text-slate-600'
-                        )}
+                        className="grid h-9 w-9 place-items-center rounded-full border border-white/80 bg-white/95 text-[#08123A] shadow-sm backdrop-blur-md transition-transform hover:scale-110"
                       >
                         <Heart
                           className={cn(
                             'h-4 w-4 transition-colors',
-                            isLiked ? 'fill-[#08123A] text-[#08123A]' : 'fill-transparent text-slate-700'
+                            isLiked ? 'fill-rose-500 text-rose-500' : 'fill-transparent text-slate-700'
                           )}
                         />
                       </button>
@@ -218,21 +247,21 @@ export default function Explore() {
                   <div className="flex flex-1 flex-col justify-between px-2 pb-2 pt-3">
                     <div>
                       <p className="text-[11.5px] font-bold text-slate-400">{brand.name}</p>
-                      <h3 className="mt-0.5 line-clamp-2 text-[14.5px] font-extrabold leading-snug text-[#08123A]">
+                      <h3 className="mt-0.5 line-clamp-2 text-[14.5px] font-extrabold leading-snug text-[#08123A] dark:text-slate-100">
                         {brand.discount} · {mainTitle}
                       </h3>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-[11px] font-semibold text-slate-500">
+                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-[11px] font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400">
                       <span className="inline-flex items-center gap-1">
                         {brand.redemption === 'app' ? (
-                          <Smartphone className="h-3.5 w-3.5 text-[#1D6FF2]" />
+                          <Smartphone className="h-3.5 w-3.5 text-[#1D6FF2] dark:text-sky-400" />
                         ) : (
-                          <QrCode className="h-3.5 w-3.5 text-[#1D6FF2]" />
+                          <QrCode className="h-3.5 w-3.5 text-[#1D6FF2] dark:text-sky-400" />
                         )}
                         {brand.redemption === 'app' ? 'Ilova orqali' : 'QR-kod'}
                       </span>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 font-extrabold text-amber-600">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 font-extrabold text-amber-600 dark:text-amber-300">
                         <Flame className="h-3 w-3" />
                         {brand.activations_count || 240} aktivatsiya
                       </span>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft,
+  ArrowRight,
   Building2,
   Calendar,
   Camera,
@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  GraduationCap,
   Lock,
   Mail,
   MapPin,
@@ -18,56 +19,23 @@ import {
   Send,
   ShieldCheck,
   User,
-  X,
 } from 'lucide-react';
 import Logo from '@/components/Logo';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import PageTopGradient from '@/components/PageTopGradient';
+import PageBreadcrumb from '@/components/PageBreadcrumb';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
-import { useStudent } from '@/lib/StudentContext';
+import { OAUTH_PENDING_KEY, OAUTH_RETURN_KEY, useStudent } from '@/lib/StudentContext';
 import { supabase } from '@/lib/supabase';
-import { api } from '@/services/api';
+import { api, COURSE_OPTIONS } from '@/services/api';
+import { REGIONS, formatUzPhone, formatBirthDateMask } from '@/lib/formUtils';
 import { cn } from '@/lib/utils';
 
-export const REGIONS = [
-  'Toshkent shahri',
-  'Toshkent viloyati',
-  'Andijon viloyati',
-  'Buxoro viloyati',
-  'Farg‘ona viloyati',
-  'Jizzax viloyati',
-  'Xorazm viloyati',
-  'Namangan viloyati',
-  'Navoiy viloyati',
-  'Qashqadaryo viloyati',
-  'Qoraqalpog‘iston Respublikasi',
-  'Samarqand viloyati',
-  'Sirdaryo viloyati',
-  'Surxondaryo viloyati',
-];
+export { REGIONS, formatUzPhone, formatBirthDateMask };
 
 const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
 const YEARS = Array.from({ length: 2020 - 1980 + 1 }, (_, i) => String(2020 - i));
-
-export function formatUzPhone(raw) {
-  let digits = String(raw || '').replace(/\D/g, '');
-  if (digits.startsWith('998') && digits.length > 9) {
-    digits = digits.slice(3);
-  }
-  digits = digits.slice(0, 9);
-  const p1 = digits.slice(0, 2);
-  const p2 = digits.slice(2, 5);
-  const p3 = digits.slice(5, 7);
-  const p4 = digits.slice(7, 9);
-  return [p1, p2, p3, p4].filter(Boolean).join(' ');
-}
-
-export function formatBirthDateMask(raw) {
-  const digits = String(raw || '').replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4, 8)}`;
-}
 
 function BrandEmblem() {
   return (
@@ -112,8 +80,8 @@ function BrandEmblem() {
 export default function Welcome() {
   const { t } = useLang();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { signIn, updateProfile } = useStudent();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { profile, signIn, updateProfile } = useStudent();
 
   const returnTo = searchParams.get('returnTo') || '/';
 
@@ -131,9 +99,6 @@ export default function Welcome() {
 
   // Email signup rozilik checkboxi
   const [emailTermsAccepted, setEmailTermsAccepted] = useState(false);
-
-  // Huquqiy hujjatlar modali ('terms' | 'privacy' | null)
-  const [legalModal, setLegalModal] = useState(null);
 
   // OTP va Telegram Bot holati
   const [enteredCode, setEnteredCode] = useState('');
@@ -154,6 +119,7 @@ export default function Welcome() {
   const [region, setRegion] = useState('');
   const [university, setUniversity] = useState('');
   const [customInstitution, setCustomInstitution] = useState('');
+  const [course, setCourse] = useState('');
   const [birthDay, setBirthDay] = useState('');
   const [birthMonth, setBirthMonth] = useState('');
   const [birthYear, setBirthYear] = useState('');
@@ -165,6 +131,23 @@ export default function Welcome() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Agar Google OAuth yoki sessiya avtomatik tasdiqlangan bo'lsa, darhol kerakli sahifaga yo'naltirish
+  useEffect(() => {
+    if (profile?.signedIn && step === 'form') {
+      let target = returnTo && returnTo !== '/' ? returnTo : '/profile';
+      try {
+        const savedReturn = sessionStorage.getItem(OAUTH_RETURN_KEY);
+        if (savedReturn && savedReturn.startsWith('/') && !savedReturn.startsWith('//')) {
+          target = savedReturn;
+        }
+        sessionStorage.removeItem(OAUTH_RETURN_KEY);
+      } catch {
+        /* ignore */
+      }
+      navigate(target, { replace: true });
+    }
+  }, [profile?.signedIn, step, returnTo, navigate]);
 
   // 60 soniyalik taymer
   useEffect(() => {
@@ -283,12 +266,27 @@ export default function Welcome() {
     resetMessages();
     setBusy(true);
     try {
+      const targetAfterAuth =
+        returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') && returnTo !== '/'
+          ? returnTo
+          : '/profile';
+      try {
+        sessionStorage.setItem(OAUTH_PENDING_KEY, '1');
+        sessionStorage.setItem(OAUTH_RETURN_KEY, targetAfterAuth);
+      } catch {
+        /* ignore */
+      }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/profile` },
       });
       if (oauthError) throw oauthError;
     } catch (err) {
+      try {
+        sessionStorage.removeItem(OAUTH_PENDING_KEY);
+      } catch {
+        /* ignore */
+      }
       setError(err.message || 'Google orqali kirishda xatolik yuz berdi');
       setBusy(false);
     }
@@ -492,6 +490,10 @@ export default function Welcome() {
       setError('Ta’lim muassasangiz nomini yozing');
       return;
     }
+    if (!course || !COURSE_OPTIONS.includes(String(course))) {
+      setError('Kursingizni tanlang (1–6)');
+      return;
+    }
     if (!birthDay || !birthMonth || !birthYear) {
       setError('Tug‘ilgan kun, oy va yilingizni tanlang');
       return;
@@ -530,6 +532,7 @@ export default function Welcome() {
         phone: formattedPhone,
         name: fullNameCombined,
         university: finalInstitution,
+        course: String(course),
         gender,
         birth_date: birthDate,
         region,
@@ -541,6 +544,7 @@ export default function Welcome() {
           name: fullNameCombined,
           full_name: fullNameCombined,
           university: finalInstitution,
+          course: String(course),
           phone: formattedPhone,
           birth_date: birthDate,
           gender,
@@ -551,7 +555,7 @@ export default function Welcome() {
         });
       }
 
-      navigate('/profile');
+      navigate('/profile', { replace: true });
     } catch (err) {
       setError(err.message || 'Ma’lumotlarni saqlashda xatolik');
     } finally {
@@ -636,38 +640,65 @@ export default function Welcome() {
     }
   };
 
-  return (
-    <div className="relative flex min-h-screen flex-col">
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#F5F8FF]">
-        <div className="absolute -left-24 -top-32 h-[420px] w-[420px] rounded-full bg-[#00A9FF]/30 blur-[130px]" />
-        <div className="absolute right-[-10%] top-1/3 h-[380px] w-[380px] rounded-full bg-[#1D6FF2]/25 blur-[130px]" />
-        <div className="absolute bottom-[-10%] left-1/4 h-[320px] w-[320px] rounded-full bg-[#7C5CFF]/20 blur-[140px]" />
-      </div>
+  const switchAuthMode = (nextMode) => {
+    setMode(nextMode);
+    setStep('form');
+    resetMessages();
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('mode', nextMode);
+    setSearchParams(nextParams, { replace: true });
+  };
 
-      {/* YUQORI PANEL: ASOSIYGA QAYTISH + LOGO + TIL */}
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 pt-5">
-        <div className="flex items-center gap-3">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/85 px-3.5 py-2 text-[12.5px] font-bold text-[#002D96] shadow-xs backdrop-blur-xl transition-all hover:border-[#1D6FF2] hover:bg-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Asosiyga</span>
-          </Link>
-          <Link to="/" className="hidden sm:inline-flex">
-            <Logo size="sm" />
-          </Link>
-        </div>
+  const welcomeBreadcrumbs = useMemo(() => {
+    const baseLabel = mode === 'signup' ? 'Ro‘yxatdan o‘tish' : 'Kirish';
+    if (step === 'form') {
+      return [{ label: baseLabel }];
+    }
+    const stepLabel =
+      step === 'otp'
+        ? 'Tasdiqlash kodi'
+        : step === 'details'
+          ? 'Talaba ma’lumotlari'
+          : 'Parolni tiklash';
+    return [
+      {
+        label: baseLabel,
+        onClick: () => {
+          setStep('form');
+          resetMessages();
+        },
+      },
+      { label: stepLabel },
+    ];
+  }, [mode, step]);
+
+  return (
+    <div className="relative flex min-h-screen flex-col bg-white text-[#08123A] dark:bg-[#070d1f] dark:text-slate-100">
+      <PageTopGradient />
+
+      {/* YUQORI GLASS PANEL: LOGO (OVAL) + TIL */}
+      <div className="relative z-10 mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 pt-4 md:px-8">
+        <Link
+          to="/"
+          className="imtiyo-glass-pill inline-flex shrink-0 items-center rounded-full px-3.5 py-1.5"
+        >
+          <Logo size="sm" />
+        </Link>
 
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
         </div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-5 pb-10 pt-4">
+      {/* UNIFIED BREADCRUMB (YUQORI CHAP BURCHAKDA) */}
+      <div className="relative z-10 mx-auto w-full max-w-[1440px] px-4 pt-4 md:px-8">
+        <PageBreadcrumb items={welcomeBreadcrumbs} className="mb-0" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-5 pb-12 pt-4">
         <div className="mb-5 text-center">
           <BrandEmblem />
-          <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[#08123A]">
+          <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[#08123A] dark:text-white">
             {step === 'details'
               ? 'Ma’lumotlaringizni kiriting'
               : step === 'forgot'
@@ -678,43 +709,31 @@ export default function Welcome() {
           </h1>
         </div>
 
-        <div className="rounded-[26px] border border-white/70 bg-white/85 p-5 shadow-[0_26px_60px_-34px_rgba(0,45,150,0.7)] backdrop-blur-2xl">
-          <div className="mb-3 flex items-center justify-between">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1 text-[11.5px] font-bold text-slate-500 transition-colors hover:text-[#002D96]"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Asosiy sahifaga qaytish
-            </Link>
-          </div>
-
+        <div className="rounded-[26px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_26px_60px_-34px_rgba(0,45,150,0.45)] backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-[0_26px_60px_-34px_rgba(0,0,0,0.85)]">
           {/* 1. RO'YXATDAN O'TISH / KIRISH FORMASI */}
           {step === 'form' && (
             <>
-              <div className="mb-4 grid grid-cols-2 rounded-full bg-slate-100 p-1">
+              <div className="mb-4 grid grid-cols-2 rounded-full bg-slate-100 p-1 dark:bg-slate-800">
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode('signup');
-                    resetMessages();
-                  }}
+                  onClick={() => switchAuthMode('signup')}
                   className={cn(
                     'rounded-full py-2 text-[12px] font-bold transition-all',
-                    mode === 'signup' ? 'bg-white text-[#002D96] shadow-sm' : 'text-slate-500'
+                    mode === 'signup'
+                      ? 'bg-white text-[#002D96] shadow-sm dark:bg-[#1D6FF2] dark:text-white'
+                      : 'text-slate-500 dark:text-slate-400'
                   )}
                 >
                   Ro‘yxatdan o‘tish
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode('signin');
-                    resetMessages();
-                  }}
+                  onClick={() => switchAuthMode('signin')}
                   className={cn(
                     'rounded-full py-2 text-[12px] font-bold transition-all',
-                    mode === 'signin' ? 'bg-white text-[#002D96] shadow-sm' : 'text-slate-500'
+                    mode === 'signin'
+                      ? 'bg-white text-[#002D96] shadow-sm dark:bg-[#1D6FF2] dark:text-white'
+                      : 'text-slate-500 dark:text-slate-400'
                   )}
                 >
                   Kirish
@@ -725,7 +744,7 @@ export default function Welcome() {
                 type="button"
                 onClick={googleSignIn}
                 disabled={busy}
-                className="flex h-11 w-full items-center justify-center gap-2.5 rounded-full border border-slate-200/80 bg-white text-[13px] font-bold text-[#08123A] shadow-sm hover:scale-[1.01]"
+                className="flex h-11 w-full items-center justify-center gap-2.5 rounded-full border border-slate-200/90 bg-white text-[13px] font-bold text-[#08123A] shadow-sm transition-transform hover:scale-[1.01] dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
               >
                 <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                   <path
@@ -749,9 +768,9 @@ export default function Welcome() {
               </button>
 
               <div className="my-3.5 flex items-center gap-3">
-                <span className="h-px flex-1 bg-slate-200/80" />
+                <span className="h-px flex-1 bg-slate-200/80 dark:bg-slate-700" />
                 <span className="text-[10.5px] font-semibold uppercase text-slate-400">yoki</span>
-                <span className="h-px flex-1 bg-slate-200/80" />
+                <span className="h-px flex-1 bg-slate-200/80 dark:bg-slate-700" />
               </div>
 
               <div className="mb-3 flex gap-2">
@@ -764,8 +783,8 @@ export default function Welcome() {
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[12px] font-bold',
                     method === 'email'
-                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/8 text-[#002D96]'
-                      : 'border-slate-200 bg-white text-slate-500'
+                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                      : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
                   <Mail className="h-3.5 w-3.5" />
@@ -780,8 +799,8 @@ export default function Welcome() {
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[12px] font-bold',
                     method === 'phone'
-                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/8 text-[#002D96]'
-                      : 'border-slate-200 bg-white text-slate-500'
+                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                      : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
                   <Phone className="h-3.5 w-3.5" />
@@ -792,7 +811,7 @@ export default function Welcome() {
               <form onSubmit={handleSubmitForm} className="space-y-3">
                 {/* 1-MAYDON: EMAIL YOKI TELEFON */}
                 {method === 'email' ? (
-                  <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2]">
+                  <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800">
                     <Mail className="h-4 w-4 shrink-0 text-slate-400" />
                     <input
                       type="email"
@@ -800,25 +819,27 @@ export default function Welcome() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="example@gmail.com"
-                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none"
+                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2]">
-                    <span className="text-[13.5px] font-extrabold text-[#002D96]">+998</span>
+                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800">
+                    <span className="text-[13.5px] font-extrabold text-[#002D96] dark:text-sky-400">
+                      +998
+                    </span>
                     <input
                       required
                       value={phone}
                       onChange={(e) => setPhone(formatUzPhone(e.target.value))}
                       inputMode="numeric"
                       placeholder="99 999 99 99"
-                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none"
+                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                   </div>
                 )}
 
                 {/* 2-MAYDON: YANGI PAROL */}
-                <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2]">
+                <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800">
                   <Lock className="h-4 w-4 shrink-0 text-slate-400" />
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -827,25 +848,25 @@ export default function Welcome() {
                     onChange={(e) => setPassword(e.target.value)}
                     minLength={6}
                     placeholder={mode === 'signup' ? 'Yangi parol (min. 6 ta belgi)' : 'Parolingiz'}
-                    className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none"
+                    className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="text-slate-400 hover:text-[#002D96]"
+                    className="text-slate-400 hover:text-[#002D96] dark:hover:text-sky-300"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
 
-                {/* 3-MAYDON: PAROLNI TASDIQLASH (Faqat Ro'yxatdan o'tishda) */}
+                {/* 3-MAYDON: PAROLNI TASDIQLASH */}
                 {mode === 'signup' && (
                   <div
                     className={cn(
-                      'flex items-center gap-2.5 rounded-2xl border bg-white px-3.5 py-2.5 transition-colors',
+                      'flex items-center gap-2.5 rounded-2xl border bg-white px-3.5 py-2.5 transition-colors dark:bg-slate-800',
                       confirmPassword && password !== confirmPassword
                         ? 'border-rose-400'
-                        : 'border-slate-200 focus-within:border-[#1D6FF2]'
+                        : 'border-slate-200 focus-within:border-[#1D6FF2] dark:border-slate-700'
                     )}
                   >
                     <Lock className="h-4 w-4 shrink-0 text-slate-400" />
@@ -856,12 +877,12 @@ export default function Welcome() {
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       minLength={6}
                       placeholder="Parolni tasdiqlang"
-                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none"
+                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword((v) => !v)}
-                      className="text-slate-400 hover:text-[#002D96]"
+                      className="text-slate-400 hover:text-[#002D96] dark:hover:text-sky-300"
                     >
                       {showConfirmPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -881,7 +902,7 @@ export default function Welcome() {
                 {/* TELEFON ORQALI RO'YXATDAN O'TISHDA: KOD QABUL QILISH USULINI TANLASH */}
                 {mode === 'signup' && method === 'phone' && (
                   <div className="pt-1">
-                    <label className="mb-1.5 block text-[11px] font-bold text-slate-500">
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-500 dark:text-slate-400">
                       Tasdiqlash kodini qabul qilish usuli:
                     </label>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -891,18 +912,18 @@ export default function Welcome() {
                         className={cn(
                           'flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition-all',
                           phoneOtpChannel === 'telegram'
-                            ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] ring-2 ring-[#1D6FF2]/20'
-                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] ring-2 ring-[#1D6FF2]/20 dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                         )}
                       >
-                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#00A9FF]/15 text-[#0077CC]">
+                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#00A9FF]/15 text-[#0077CC] dark:text-sky-400">
                           <Send className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
                           <p className="truncate text-[11.5px] font-extrabold">
                             Telegram orqali kod olish
                           </p>
-                          <p className="truncate text-[10px] font-semibold text-[#1D6FF2]">
+                          <p className="truncate text-[10px] font-semibold text-[#1D6FF2] dark:text-sky-400">
                             @imtiyokod_bot
                           </p>
                         </div>
@@ -914,11 +935,11 @@ export default function Welcome() {
                         className={cn(
                           'flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition-all',
                           phoneOtpChannel === 'sms'
-                            ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] ring-2 ring-[#1D6FF2]/20'
-                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] ring-2 ring-[#1D6FF2]/20 dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                         )}
                       >
-                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600">
+                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                           <MessageSquare className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
@@ -932,9 +953,9 @@ export default function Welcome() {
                   </div>
                 )}
 
-                {/* EMAIL SIGNUP UCHUN MAJBURIY CHECKBOX ROZILIK */}
+                {/* EMAIL SIGNUP UCHUN MAJBURIY CHECKBOX ROZILIK (PUBLIC ROUTES YANGI OYNADA) */}
                 {mode === 'signup' && method === 'email' && (
-                  <label className="flex cursor-pointer items-start gap-2.5 pt-1 text-[11.5px] leading-relaxed text-slate-600">
+                  <label className="flex cursor-pointer items-start gap-2.5 pt-1 text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-300">
                     <input
                       type="checkbox"
                       checked={emailTermsAccepted}
@@ -943,51 +964,51 @@ export default function Welcome() {
                     />
                     <span>
                       Tizimga kirish orqali siz IMTIYOning{' '}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setLegalModal('terms');
-                        }}
-                        className="font-extrabold text-[#1D6FF2] hover:underline"
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                       >
                         Foydalanish shartlari
-                      </button>{' '}
+                      </a>{' '}
                       va{' '}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setLegalModal('privacy');
-                        }}
-                        className="font-extrabold text-[#1D6FF2] hover:underline"
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                       >
                         Maxfiylik siyosatiga
-                      </button>{' '}
+                      </a>{' '}
                       rozilik bildirasiz
                     </span>
                   </label>
                 )}
 
-                {/* TELEFON SIGNUP UCHUN CHECKBOX'SIZ PASSIV ESLATMA MATNI */}
+                {/* TELEFON SIGNUP UCHUN PASSIV ESLATMA */}
                 {mode === 'signup' && method === 'phone' && (
-                  <p className="pt-1 text-center text-[11px] leading-relaxed text-slate-500">
+                  <p className="pt-1 text-center text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
                     Ro‘yxatdan o‘tish tugmasini bosish orqali siz IMTIYOning{' '}
-                    <button
-                      type="button"
-                      onClick={() => setLegalModal('terms')}
-                      className="font-extrabold text-[#1D6FF2] hover:underline"
+                    <a
+                      href="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                     >
                       Foydalanish shartlari
-                    </button>{' '}
+                    </a>{' '}
                     va{' '}
-                    <button
-                      type="button"
-                      onClick={() => setLegalModal('privacy')}
-                      className="font-extrabold text-[#1D6FF2] hover:underline"
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                     >
                       Maxfiylik siyosatiga
-                    </button>{' '}
+                    </a>{' '}
                     rozilik bildirasiz.
                   </p>
                 )}
@@ -1001,7 +1022,7 @@ export default function Welcome() {
                         setForgotStep('input');
                         setStep('forgot');
                       }}
-                      className="text-[11.5px] font-semibold text-[#1D6FF2] hover:underline"
+                      className="text-[11.5px] font-semibold text-[#1D6FF2] hover:underline dark:text-sky-400"
                     >
                       Parolni unutdingizmi?
                     </button>
@@ -1022,23 +1043,40 @@ export default function Welcome() {
                       : 'Kirish'}
                 </Button>
               </form>
+
+              {/* UIVERSE #1 (satyamchaudharydev) — REGISTER <-> LOGIN ANIMATED SWITCH */}
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <span className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
+                  {mode === 'signup' ? 'Akkauntingiz bormi?' : 'Hali ro‘yxatdan o‘tmadingizmi?'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => switchAuthMode(mode === 'signup' ? 'signin' : 'signup')}
+                  className="imtiyo-auth-switch"
+                >
+                  <p data-text={mode === 'signup' ? 'Kirish' : 'Ro‘yxatdan o‘tish'}>
+                    {mode === 'signup' ? 'Kirish' : 'Ro‘yxatdan o‘tish'}
+                  </p>
+                  <ArrowRight />
+                </button>
+              </div>
             </>
           )}
 
-          {/* 2. OTP TASDIQLASH OYNASI (RESEND EMAIL OTP YOKI @imtiyokod_bot TELEGRAM OTP) */}
+          {/* 2. OTP TASDIQLASH OYNASI */}
           {step === 'otp' && (
             <div className="space-y-3.5 text-center">
-              <p className="text-[15px] font-extrabold text-[#08123A]">
+              <p className="text-[15px] font-extrabold text-[#08123A] dark:text-white">
                 Tasdiqlash kodini kiriting
               </p>
 
               {method === 'email' ? (
-                <p className="text-[12px] text-slate-500">
+                <p className="text-[12px] text-slate-500 dark:text-slate-400">
                   <strong>{email}</strong> manziliga 6 xonali tasdiqlash kodi yuborildi
                 </p>
               ) : phoneOtpChannel === 'telegram' ? (
-                <div className="space-y-2.5 rounded-2xl border border-[#00A9FF]/30 bg-[#00A9FF]/[0.06] p-3.5 text-left">
-                  <p className="text-[12px] font-semibold leading-relaxed text-[#08123A]">
+                <div className="space-y-2.5 rounded-2xl border border-[#00A9FF]/30 bg-[#00A9FF]/[0.06] p-3.5 text-left dark:border-sky-500/30 dark:bg-sky-500/10">
+                  <p className="text-[12px] font-semibold leading-relaxed text-[#08123A] dark:text-slate-200">
                     1. Quyidagi tugma orqali <strong>@{tgBotUsername}</strong> botiga o‘ting va{' '}
                     <strong>«Start»</strong> bosing.
                     <br />
@@ -1050,7 +1088,7 @@ export default function Welcome() {
                   <a
                     href={tgDeepLink || `https://t.me/${tgBotUsername}`}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#0088CC] text-[12.5px] font-extrabold text-white shadow-sm transition-transform hover:scale-[1.01]"
                   >
                     <Send className="h-4 w-4" />
@@ -1058,14 +1096,14 @@ export default function Welcome() {
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                   {tgCodeDelivered && (
-                    <p className="flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-600">
+                    <p className="flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-4 w-4" />
                       Raqamingiz tasdiqlandi! Kod Telegram botingizga yuborildi.
                     </p>
                   )}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[12px] font-semibold text-amber-800">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[12px] font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300">
                   SMS provayder hozirda ulanish jarayonida. Iltimos,{' '}
                   <button
                     type="button"
@@ -1075,7 +1113,7 @@ export default function Welcome() {
                       setTgDeepLink(tgSession.deepLink);
                       setTgBotUsername(tgSession.botUsername);
                     }}
-                    className="font-extrabold text-[#002D96] underline"
+                    className="font-extrabold text-[#002D96] underline dark:text-sky-300"
                   >
                     Telegram bot (@imtiyokod_bot)
                   </button>{' '}
@@ -1089,11 +1127,15 @@ export default function Welcome() {
                 inputMode="numeric"
                 autoFocus
                 placeholder="000000"
-                className="w-full rounded-2xl border border-slate-200 bg-white py-3 text-center text-[22px] font-extrabold tracking-[0.35em] text-[#002D96] outline-none focus:border-[#1D6FF2]"
+                className="w-full rounded-2xl border border-slate-200 bg-white py-3 text-center text-[22px] font-extrabold tracking-[0.35em] text-[#002D96] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-sky-300"
               />
 
               {error && <p className="text-[11.5px] font-semibold text-rose-500">{error}</p>}
-              {info && <p className="text-[11.5px] font-semibold text-emerald-600">{info}</p>}
+              {info && (
+                <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  {info}
+                </p>
+              )}
 
               <Button
                 onClick={handleVerifyCode}
@@ -1105,10 +1147,11 @@ export default function Welcome() {
               </Button>
 
               <div className="flex items-center justify-between pt-2 text-[12px]">
-                <span className="text-slate-500">
+                <span className="text-slate-500 dark:text-slate-400">
                   {timer > 0 ? (
                     <>
-                      Qayta yuborish: <strong className="text-[#002D96]">{timer}s</strong>
+                      Qayta yuborish:{' '}
+                      <strong className="text-[#002D96] dark:text-sky-400">{timer}s</strong>
                     </>
                   ) : (
                     'Kod muddati tugadi'
@@ -1121,35 +1164,26 @@ export default function Welcome() {
                   className={cn(
                     'flex items-center gap-1 font-bold transition-colors',
                     canResend
-                      ? 'text-[#1D6FF2] hover:underline'
-                      : 'text-slate-300 cursor-not-allowed'
+                      ? 'text-[#1D6FF2] hover:underline dark:text-sky-400'
+                      : 'cursor-not-allowed text-slate-300 dark:text-slate-600'
                   )}
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Kodni qayta yuborish
                 </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setStep('form')}
-                className="mx-auto flex items-center gap-1 pt-2 text-[11.5px] font-semibold text-slate-500"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Orqaga
-              </button>
             </div>
           )}
 
-          {/* 3. DETAILS (ANKETA) */}
+          {/* 3. DETAILS (ANKETA — KURS 1-6 MAYDONI BILAN) */}
           {step === 'details' && (
             <form onSubmit={handleSaveDetails} className="space-y-3">
               <div className="flex flex-col items-center pb-1">
-                <label className="group relative flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-[#1D6FF2]/40 bg-slate-50">
+                <label className="group relative flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-[#1D6FF2]/40 bg-slate-50 dark:bg-slate-800">
                   {avatarPreview ? (
                     <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
                   ) : (
-                    <div className="flex flex-col items-center text-slate-400 group-hover:text-[#002D96]">
+                    <div className="flex flex-col items-center text-slate-400 group-hover:text-[#002D96] dark:group-hover:text-sky-300">
                       <Camera className="h-5 w-5" />
                       <span className="mt-0.5 text-[9.5px] font-bold">Rasm</span>
                     </div>
@@ -1164,27 +1198,27 @@ export default function Welcome() {
                 <span className="mt-1 text-[10.5px] text-slate-400">Profil rasmi (ixtiyoriy)</span>
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5">
+              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                 <User className="h-4 w-4 text-slate-400" />
                 <input
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="Ismingiz"
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none"
+                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 />
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5">
+              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                 <User className="h-4 w-4 text-slate-400" />
                 <input
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="Familiyangiz"
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none"
+                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 />
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5">
+              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                 <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
                 <select
                   value={region}
@@ -1193,7 +1227,7 @@ export default function Welcome() {
                     setUniversity('');
                     setCustomInstitution('');
                   }}
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none"
+                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 >
                   <option value="">Viloyatingizni tanlang</option>
                   {REGIONS.map((r) => (
@@ -1204,7 +1238,7 @@ export default function Welcome() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5">
+              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                 <Building2 className="h-4 w-4 shrink-0 text-slate-400" />
                 <select
                   value={university}
@@ -1212,7 +1246,7 @@ export default function Welcome() {
                     setUniversity(e.target.value);
                     if (e.target.value !== 'Boshqa') setCustomInstitution('');
                   }}
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none"
+                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 >
                   <option value="">
                     {region ? 'Ta’lim muassasangizni tanlang' : 'Avval viloyatingizni tanlang'}
@@ -1232,23 +1266,41 @@ export default function Welcome() {
 
               {university === 'Boshqa' && (
                 <div>
-                  <label className="mb-1 block text-[11px] font-bold text-[#002D96]">
-                    Ta'lim muassasangiz
+                  <label className="mb-1 block text-[11px] font-bold text-[#002D96] dark:text-sky-300">
+                    Ta’lim muassasangiz
                   </label>
-                  <div className="flex items-center gap-2.5 rounded-2xl border border-[#1D6FF2]/40 bg-[#1D6FF2]/[0.03] px-3.5 py-2.5">
-                    <Building2 className="h-4 w-4 shrink-0 text-[#1D6FF2]" />
+                  <div className="flex items-center gap-2.5 rounded-2xl border border-[#1D6FF2]/40 bg-[#1D6FF2]/[0.04] px-3.5 py-2.5 dark:bg-sky-500/10">
+                    <Building2 className="h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
                     <input
                       value={customInstitution}
                       onChange={(e) => setCustomInstitution(e.target.value)}
-                      placeholder="Ta'lim muassasangiz"
-                      className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none"
+                      placeholder="Ta’lim muassasangiz"
+                      className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                   </div>
                 </div>
               )}
 
+              {/* KURS MAYDONI (1 - 6 DROPDOWN) */}
+              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                <GraduationCap className="h-4 w-4 shrink-0 text-slate-400" />
+                <select
+                  required
+                  value={course}
+                  onChange={(e) => setCourse(e.target.value)}
+                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
+                >
+                  <option value="">Kursingizni tanlang (1–6)</option>
+                  {COURSE_OPTIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}-kurs
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
-                <label className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                <label className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
                   <Calendar className="h-3.5 w-3.5" />
                   Tug‘ilgan sana (Kun / Oy / Yil)
                 </label>
@@ -1256,7 +1308,7 @@ export default function Welcome() {
                   <select
                     value={birthDay}
                     onChange={(e) => setBirthDay(e.target.value)}
-                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none"
+                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     <option value="">Kun</option>
                     {DAYS.map((d) => (
@@ -1269,7 +1321,7 @@ export default function Welcome() {
                   <select
                     value={birthMonth}
                     onChange={(e) => setBirthMonth(e.target.value)}
-                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none"
+                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     <option value="">Oy</option>
                     <option value="01">Yanvar</option>
@@ -1289,7 +1341,7 @@ export default function Welcome() {
                   <select
                     value={birthYear}
                     onChange={(e) => setBirthYear(e.target.value)}
-                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none"
+                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     <option value="">Yil</option>
                     {YEARS.map((y) => (
@@ -1306,10 +1358,10 @@ export default function Welcome() {
                   type="button"
                   onClick={() => setGender('male')}
                   className={cn(
-                    'rounded-xl border py-2 text-[12.5px] font-bold',
+                    'rounded-xl border py-2 text-[12.5px] font-bold transition-colors',
                     gender === 'male'
-                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96]'
-                      : 'bg-white text-slate-600'
+                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                      : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
                   O‘g‘il bola
@@ -1318,10 +1370,10 @@ export default function Welcome() {
                   type="button"
                   onClick={() => setGender('female')}
                   className={cn(
-                    'rounded-xl border py-2 text-[12.5px] font-bold',
+                    'rounded-xl border py-2 text-[12.5px] font-bold transition-colors',
                     gender === 'female'
-                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96]'
-                      : 'bg-white text-slate-600'
+                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                      : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
                   Qiz bola
@@ -1330,19 +1382,23 @@ export default function Welcome() {
 
               <div
                 className={cn(
-                  'flex items-center gap-2 rounded-2xl border px-3.5 py-2.5',
-                  method === 'phone' ? 'border-slate-200 bg-slate-100' : 'border-slate-200 bg-white'
+                  'flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 dark:border-slate-700',
+                  method === 'phone'
+                    ? 'border-slate-200 bg-slate-100 dark:bg-slate-800/60'
+                    : 'border-slate-200 bg-white dark:bg-slate-800'
                 )}
               >
                 <Phone className="h-4 w-4 text-slate-400" />
-                <span className="text-[13px] font-bold text-[#002D96]">+998</span>
+                <span className="text-[13px] font-bold text-[#002D96] dark:text-sky-400">
+                  +998
+                </span>
                 <input
                   value={method === 'phone' ? formatUzPhone(phone) : extraPhone}
                   readOnly={method === 'phone'}
                   onChange={(e) => setExtraPhone(formatUzPhone(e.target.value))}
                   inputMode="numeric"
                   placeholder="99 999 99 99"
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none"
+                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 />
               </div>
 
@@ -1372,8 +1428,8 @@ export default function Welcome() {
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[12px] font-bold',
                     method === 'email'
-                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/8 text-[#002D96]'
-                      : 'bg-white text-slate-500'
+                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                      : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
                   <Mail className="h-3.5 w-3.5" />
@@ -1389,8 +1445,8 @@ export default function Welcome() {
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[12px] font-bold',
                     method === 'phone'
-                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/8 text-[#002D96]'
-                      : 'bg-white text-slate-500'
+                      ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                      : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
                   <Phone className="h-3.5 w-3.5" />
@@ -1401,31 +1457,37 @@ export default function Welcome() {
               {forgotStep === 'input' ? (
                 <form onSubmit={handleForgotPassword} className="space-y-3">
                   {method === 'email' ? (
-                    <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5">
+                    <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                       <Mail className="h-4 w-4 text-slate-400" />
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="example@gmail.com"
-                        className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none"
+                        className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                       />
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5">
-                      <span className="text-[13.5px] font-bold text-[#002D96]">+998</span>
+                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                      <span className="text-[13.5px] font-bold text-[#002D96] dark:text-sky-400">
+                        +998
+                      </span>
                       <input
                         value={phone}
                         onChange={(e) => setPhone(formatUzPhone(e.target.value))}
                         inputMode="numeric"
                         placeholder="99 999 99 99"
-                        className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none"
+                        className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                       />
                     </div>
                   )}
 
                   {error && <p className="text-[11.5px] font-semibold text-rose-500">{error}</p>}
-                  {info && <p className="text-[11.5px] font-semibold text-emerald-600">{info}</p>}
+                  {info && (
+                    <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      {info}
+                    </p>
+                  )}
 
                   <Button
                     type="submit"
@@ -1441,7 +1503,7 @@ export default function Welcome() {
                     <a
                       href={tgDeepLink}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#0088CC] text-[12px] font-extrabold text-white"
                     >
                       <Send className="h-3.5 w-3.5" />
@@ -1454,10 +1516,10 @@ export default function Welcome() {
                     onChange={(e) => setEnteredCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     inputMode="numeric"
                     placeholder="6 xonali kod"
-                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 text-center text-[18px] font-extrabold tracking-[0.3em] text-[#002D96] outline-none"
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 text-center text-[18px] font-extrabold tracking-[0.3em] text-[#002D96] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-sky-300"
                   />
 
-                  <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5">
+                  <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
                     <Lock className="h-4 w-4 text-slate-400" />
                     <input
                       type={showNewPassword ? 'text' : 'password'}
@@ -1465,12 +1527,12 @@ export default function Welcome() {
                       onChange={(e) => setNewPassword(e.target.value)}
                       minLength={6}
                       placeholder="Yangi parol (min. 6 ta belgi)"
-                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none"
+                      className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                     <button
                       type="button"
                       onClick={() => setShowNewPassword((v) => !v)}
-                      className="text-slate-400 hover:text-[#002D96]"
+                      className="text-slate-400 hover:text-[#002D96] dark:hover:text-sky-300"
                     >
                       {showNewPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -1481,7 +1543,11 @@ export default function Welcome() {
                   </div>
 
                   {error && <p className="text-[11.5px] font-semibold text-rose-500">{error}</p>}
-                  {info && <p className="text-[11.5px] font-semibold text-emerald-600">{info}</p>}
+                  {info && (
+                    <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      {info}
+                    </p>
+                  )}
 
                   <Button
                     type="submit"
@@ -1492,75 +1558,10 @@ export default function Welcome() {
                   </Button>
                 </form>
               )}
-
-              <button
-                type="button"
-                onClick={() => setStep('form')}
-                className="mx-auto flex items-center gap-1 pt-2 text-[11.5px] font-semibold text-slate-500"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Kirishga qaytish
-              </button>
             </div>
           )}
         </div>
       </div>
-
-      {/* FOYDALANISH SHARTLARI VA MAXFIYLIK SIYOSATI MODALI */}
-      {legalModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/55 p-4 backdrop-blur-xs"
-          onClick={() => setLegalModal(null)}
-        >
-          <div
-            className="max-h-[82vh] w-full max-w-lg overflow-y-auto rounded-[28px] bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-[18px] font-extrabold text-[#08123A]">
-                {legalModal === 'terms' ? 'Foydalanish shartlari' : 'Maxfiylik siyosati'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setLegalModal(null)}
-                className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="space-y-3 text-[13px] leading-relaxed text-slate-600">
-              {legalModal === 'terms' ? (
-                <>
-                  <p>
-                    1. <strong>Umumiy qoidalar:</strong> Ushbu Foydalanish shartlari IMTIYO
-                    platformasidan foydalanish tartibini belgilaydi.
-                  </p>
-                  <p>
-                    2. <strong>Talabalikni tasdiqlash:</strong> Foydalanuvchi faqat o‘ziga tegishli
-                    haqiqiy talabalik guvohnomasi yoki HEMIS ma’lumotnomasini taqdim etishi shart.
-                  </p>
-                  <p>
-                    3. <strong>Chegirma va promo-kodlar:</strong> Taqdim etilgan kodlar shaxsiy
-                    foydalanish uchun mo‘ljallangan.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p>
-                    1. <strong>Shaxsiy ma’lumotlar:</strong> Ro‘yxatdan o‘tish vaqtida kiritilgan
-                    email, telefon raqami va o‘quv yurti ma’lumotlari faqat talabalik statusini
-                    tasdiqlash uchun ishlatiladi.
-                  </p>
-                  <p>
-                    2. <strong>Xavfsizlik:</strong> Ma’lumotlaringiz shifrlangan holda saqlanadi va
-                    uchinchi shaxslarga berilmaydi.
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

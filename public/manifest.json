@@ -1,0 +1,21 @@
+{
+  "name": "Imtiyo — Talabalar uchun chegirmalar",
+  "short_name": "Imtiyo",
+  "description": "O‘zbekiston talabalari uchun chegirmalar platformasi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#002D96",
+  "icons": [
+    {
+      "src": "https://media.base44.com/images/public/user_6af5c2387f063b9da1195d31/d8d26fc43_image.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://media.base44.com/images/public/user_6af5c2387f063b9da1195d31/d8d26fc43_image.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

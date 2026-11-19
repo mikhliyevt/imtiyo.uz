@@ -2,8 +2,8 @@ import { cn } from '@/lib/utils';
 
 export default function Logo({ size = 'md', className }) {
   const sizes = {
-    sm: { box: 'h-8 w-8 rounded-[10px]', text: 'text-[17px]', sub: 'text-[8px]' },
-    md: { box: 'h-9 w-9 rounded-[12px]', text: 'text-[19px]', sub: 'text-[9px]' },
+    sm: { box: 'h-8 w-8 rounded-[10px]', text: 'text-[16px]', sub: 'text-[8px]' },
+    md: { box: 'h-9 w-9 rounded-[12px]', text: 'text-[18px]', sub: 'text-[8.5px]' },
     lg: { box: 'h-11 w-11 rounded-[14px]', text: 'text-[22px]', sub: 'text-[10px]' },
   };
   const s = sizes[size] || sizes.md;
@@ -66,7 +66,7 @@ export default function Logo({ size = 'md', className }) {
         </span>
         <span
           className={cn(
-            'mt-0.5 font-bold uppercase tracking-[0.16em] text-[#1D6FF2]',
+            'mt-0.5 whitespace-nowrap font-bold uppercase tracking-[0.14em] text-[#1D6FF2] dark:text-sky-400',
             s.sub
           )}
         >

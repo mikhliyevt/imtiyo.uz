@@ -78,10 +78,10 @@ export default function CategoryPills({ value = 'all', onChange, selected, onSel
             type="button"
             onClick={() => handleSelect(cat.id)}
             className={cn(
-              'inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-[12.5px] font-bold transition-all',
+              'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 py-2 text-[12.5px] font-bold transition-all',
               active
                 ? 'border-transparent bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-white shadow-[0_10px_22px_-12px_rgba(0,45,150,0.85)]'
-                : 'border-white/80 bg-white/85 text-slate-600 hover:border-[#1D6FF2]/40 hover:text-[#002D96]'
+                : 'border-slate-200/80 bg-white/80 text-slate-700 backdrop-blur-md hover:border-[#1D6FF2]/45 hover:bg-white hover:text-[#002D96] dark:border-slate-700/70 dark:bg-slate-900/75 dark:text-slate-200 dark:hover:border-sky-400/50 dark:hover:bg-slate-800 dark:hover:text-sky-300'
             )}
           >
             <Icon className="h-3.5 w-3.5" />

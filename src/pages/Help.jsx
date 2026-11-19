@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   HelpCircle,
@@ -17,7 +15,6 @@ import { DEFAULT_FAQ_ITEMS } from '@/services/api';
 import { cn } from '@/lib/utils';
 
 export default function Help() {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [openIndex, setOpenIndex] = useState(0);
 
@@ -44,30 +41,19 @@ export default function Help() {
   };
 
   return (
-    <AppShell>
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/85 px-4 py-2 text-[12.5px] font-bold text-[#002D96] shadow-xs backdrop-blur-xl transition-all hover:border-[#1D6FF2] hover:bg-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Orqaga</span>
-          </button>
-        </div>
-
+    <AppShell breadcrumbs={[{ label: 'Yordam va Bog‘lanish' }]}>
+      <div className="mx-auto max-w-4xl space-y-6 pb-8">
         {/* 1-QISM: KO'P BERILADIGAN SAVOLLAR (FAQ) */}
-        <div className="rounded-[28px] border border-white/80 bg-white/85 p-6 shadow-[0_20px_50px_-30px_rgba(0,45,150,0.35)] backdrop-blur-xl">
+        <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-[0_20px_50px_-30px_rgba(0,45,150,0.28)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
           <div className="mb-5 flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#002D96]/10 text-[#002D96]">
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#002D96]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-400">
               <HelpCircle className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-[22px] font-extrabold text-[#08123A]">
+              <h1 className="text-[22px] font-extrabold text-[#08123A] dark:text-white">
                 Yordam va Bog‘lanish markazi
               </h1>
-              <p className="text-[12.5px] text-slate-500">
+              <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
                 Ko‘p beriladigan savollar hamda tezkor qayta aloqa
               </p>
             </div>
@@ -82,33 +68,35 @@ export default function Help() {
                   className={cn(
                     'overflow-hidden rounded-2xl border transition-all',
                     isOpen
-                      ? 'border-[#1D6FF2]/45 bg-[#1D6FF2]/[0.04]'
-                      : 'border-slate-100 bg-white hover:border-slate-200'
+                      ? 'border-[#1D6FF2]/45 bg-[#1D6FF2]/[0.05] dark:border-sky-500/40 dark:bg-sky-500/10'
+                      : 'border-slate-200/80 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:border-slate-700'
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => setOpenIndex(isOpen ? -1 : idx)}
-                    className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left text-[14px] font-extrabold text-[#08123A]"
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left text-[14px] font-extrabold text-[#08123A] dark:text-white"
                   >
                     <span>{item.q}</span>
                     <ChevronDown
                       className={cn(
-                        'h-4 w-4 shrink-0 text-[#002D96] transition-transform duration-200',
+                        'h-4 w-4 shrink-0 text-[#002D96] transition-transform duration-200 dark:text-sky-400',
                         isOpen && 'rotate-180'
                       )}
                     />
                   </button>
                   {isOpen && (
-                    <div className="border-t border-slate-100/80 px-4 pb-4 pt-3 text-[13px] leading-relaxed">
-                      {item.intro && <p className="font-bold text-[#08123A]">{item.intro}</p>}
+                    <div className="border-t border-slate-100/80 px-4 pb-4 pt-3 text-[13px] leading-relaxed dark:border-slate-700/70">
+                      {item.intro && (
+                        <p className="font-bold text-[#08123A] dark:text-slate-100">{item.intro}</p>
+                      )}
                       <ul className="mt-2.5 space-y-2">
                         {(item.bullets || []).map((b, bIdx) => (
                           <li
                             key={bIdx}
-                            className="flex items-start gap-2.5 font-semibold text-slate-700 dark:text-slate-200"
+                            className="flex items-start gap-2.5 font-semibold text-slate-700 dark:text-slate-300"
                           >
-                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1D6FF2]" />
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
                             <span>{b}</span>
                           </li>
                         ))}
@@ -121,9 +109,9 @@ export default function Help() {
           </div>
         </div>
 
-        {/* 2-QISM: BIZ BILAN BOG'LANISH (CONTACT PANEL) */}
+        {/* 2-QISM: BIZ BILAN BOG'LANISH (UIVERSE #3 Jaareet ANIMATED INPUTS) */}
         <div className="grid gap-5 md:grid-cols-5">
-          <div className="space-y-3 rounded-[28px] bg-gradient-to-br from-[#002D96] via-[#1D6FF2] to-[#00A9FF] p-6 text-white md:col-span-2">
+          <div className="space-y-3 rounded-[28px] bg-gradient-to-br from-[#002D96] via-[#1D6FF2] to-[#00A9FF] p-6 text-white shadow-md md:col-span-2">
             <h2 className="text-[19px] font-extrabold">Biz bilan bog‘lanish</h2>
             <p className="text-[12.5px] leading-relaxed text-white/85">
               Savol, taklif yoki hamkorlik bo‘yicha murojaatingizni qoldiring — jamoamiz sizga
@@ -134,7 +122,7 @@ export default function Help() {
               <a
                 href="https://t.me/imtiyosupport_bot"
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="flex items-center gap-3 rounded-2xl bg-white/15 px-4 py-3 font-bold backdrop-blur-md transition-colors hover:bg-white/25"
               >
                 <Send className="h-4 w-4 shrink-0" />
@@ -164,15 +152,17 @@ export default function Help() {
 
           <form
             onSubmit={handleContactSubmit}
-            className="space-y-3.5 rounded-[28px] border border-white/80 bg-white/90 p-6 shadow-xs backdrop-blur-xl md:col-span-3"
+            className="space-y-4 rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 md:col-span-3"
           >
             <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-[#1D6FF2]" />
-              <h3 className="text-[17px] font-extrabold text-[#08123A]">Xabar yuborish</h3>
+              <MessageSquare className="h-5 w-5 text-[#1D6FF2] dark:text-sky-400" />
+              <h3 className="text-[17px] font-extrabold text-[#08123A] dark:text-white">
+                Xabar yuborish
+              </h3>
             </div>
 
             <div>
-              <label className="mb-1 block text-[11.5px] font-bold text-slate-500">
+              <label className="mb-1.5 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
                 Ism va familiyangiz *
               </label>
               <input
@@ -180,12 +170,12 @@ export default function Help() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Ismingizni kiriting"
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold outline-none focus:border-[#1D6FF2]"
+                className="imtiyo-help-input"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11.5px] font-bold text-slate-500">
+              <label className="mb-1.5 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
                 Telefon raqam yoki Telegram (@username) *
               </label>
               <input
@@ -193,12 +183,12 @@ export default function Help() {
                 value={contactInfo}
                 onChange={(e) => setContactInfo(e.target.value)}
                 placeholder="+998 90 123 45 67 yoki @username"
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold outline-none focus:border-[#1D6FF2]"
+                className="imtiyo-help-input"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11.5px] font-bold text-slate-500">
+              <label className="mb-1.5 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
                 Murojaat matni *
               </label>
               <textarea
@@ -207,7 +197,7 @@ export default function Help() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Savolingiz yoki taklifingizni batafsil yozing..."
-                className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-[13px] font-semibold outline-none focus:border-[#1D6FF2]"
+                className="imtiyo-help-input resize-none"
               />
             </div>
 

@@ -7,9 +7,9 @@ export default function OfferCard({ offer, onClaim }) {
   const isApp = offer.redemption === 'app';
 
   return (
-    <div className="rounded-[22px] border border-white/70 bg-white/75 p-4 shadow-[0_16px_36px_-30px_rgba(0,45,150,0.75)] backdrop-blur-xl">
+    <div className="rounded-[22px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_16px_36px_-30px_rgba(0,45,150,0.75)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[13.5px] font-extrabold leading-snug text-[#08123A]">
+        <p className="text-[13.5px] font-extrabold leading-snug text-[#08123A] dark:text-white">
           {localizedTitle(offer, lang)}
         </p>
         <span className="shrink-0 rounded-full bg-[#002D96] px-2.5 py-1 text-[11px] font-bold text-white">
@@ -18,7 +18,7 @@ export default function OfferCard({ offer, onClaim }) {
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1 rounded-full bg-[#002D96]/8 px-2.5 py-1 text-[10px] font-semibold text-[#002D96]">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#002D96]/8 px-2.5 py-1 text-[10px] font-semibold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
           {isApp ? <Smartphone className="h-3 w-3" /> : <QrCode className="h-3 w-3" />}
           {t(isApp ? 'offer.app' : 'offer.qr')}
         </span>

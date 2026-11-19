@@ -5,12 +5,13 @@ export default function ProtectedRoute({ children }) {
   const { profile, loading } = useStudent();
   const location = useLocation();
 
-  // Faqat dastlabki 1 soniya ichida loading bo'lsa spinner ko'rsatamiz,
-  // profile allaqachon mavjud bo'lsa hech qachon qotib qolmaydi
-  if (loading && !profile) {
+  if (loading) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#F5F8FF] dark:bg-[#070d1f]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#002D96]" />
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-white dark:bg-[#070d1f]">
+        <div className="h-9 w-9 animate-spin rounded-full border-4 border-slate-200 border-t-[#1D6FF2] dark:border-slate-700 dark:border-t-sky-400" />
+        <p className="text-[12.5px] font-bold text-slate-500 dark:text-slate-400">
+          Akkauntga kirilmoqda...
+        </p>
       </div>
     );
   }

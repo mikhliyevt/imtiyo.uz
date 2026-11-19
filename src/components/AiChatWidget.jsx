@@ -100,7 +100,7 @@ export default function AiChatWidget() {
                   className={cn('flex items-end gap-1.5', isUser ? 'justify-end' : 'justify-start')}
                 >
                   {!isUser && (
-                    <div className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-[#002D96]/10 text-[#002D96]">
+                    <div className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-[#002D96]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-400">
                       <Sparkles className="h-3 w-3" />
                     </div>
                   )}
@@ -108,8 +108,8 @@ export default function AiChatWidget() {
                     className={cn(
                       'max-w-[80%] rounded-2xl px-3 py-2 text-[12px] font-medium leading-relaxed',
                       isUser
-                        ? 'rounded-br-xs bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-white'
-                        : 'rounded-bl-xs border border-slate-100 bg-slate-50 text-[#08123A]'
+                        ? 'rounded-br-sm bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-white'
+                        : 'rounded-bl-sm border border-slate-100 bg-slate-50 text-[#08123A] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                     )}
                   >
                     {msg.text}
@@ -128,7 +128,7 @@ export default function AiChatWidget() {
                   key={q}
                   type="button"
                   onClick={() => sendMessage(q)}
-                  className="rounded-full border border-[#1D6FF2]/30 bg-[#1D6FF2]/[0.06] px-2.5 py-1 text-[10.5px] font-bold text-[#002D96] hover:bg-[#1D6FF2]/15"
+                  className="rounded-full border border-[#1D6FF2]/30 bg-[#1D6FF2]/[0.06] px-2.5 py-1 text-[10.5px] font-bold text-[#002D96] hover:bg-[#1D6FF2]/15 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20"
                 >
                   {q}
                 </button>
@@ -138,14 +138,14 @@ export default function AiChatWidget() {
 
           <form
             onSubmit={handleSubmit}
-            className="flex items-center gap-1.5 border-t border-slate-100 bg-white px-3 py-2"
+            className="flex items-center gap-1.5 border-t border-slate-100 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900"
           >
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Savolingiz..."
-              className="h-8 flex-1 rounded-full border border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2]"
+              className="h-8 flex-1 rounded-full border border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             />
             <button
               type="submit"

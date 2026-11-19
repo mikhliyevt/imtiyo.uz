@@ -1,25 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell,
   ChevronDown,
   ChevronRight,
-  Compass,
-  GraduationCap,
+  ExternalLink,
   Heart,
   HelpCircle,
-  Home as HomeIcon,
   Info,
   Instagram,
   LogOut,
   Mail,
-  Map,
   MapPin,
-  Percent,
   Search,
   Send,
   Settings,
-  ShieldCheck,
   Star,
   Ticket,
   Trash2,
@@ -29,17 +24,14 @@ import {
 import Logo from '@/components/Logo';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import VerifyModal from '@/components/VerifyModal';
+import PageTopGradient from '@/components/PageTopGradient';
+import PageBreadcrumb from '@/components/PageBreadcrumb';
+import AuthPromptCardModal from '@/components/AuthPromptCardModal';
+import MobileBottomDock from '@/components/MobileBottomDock';
 import { useStudent } from '@/lib/StudentContext';
 import { api } from '@/services/api';
 import { brands as sampleBrands, offers as sampleOffers } from '@/data/mockData';
 import { cn } from '@/lib/utils';
-
-const mobileNavItems = [
-  { to: '/', icon: HomeIcon, label: 'Asosiy' },
-  { to: '/explore', icon: Compass, label: 'Qidiruv' },
-  { to: '/map', icon: Map, label: 'Xarita' },
-  { to: '/help', icon: HelpCircle, label: 'Yordam' },
-];
 
 const INITIAL_NOTIFICATIONS = [
   {
@@ -62,15 +54,18 @@ export function openAuthPromptModal(reason = 'default') {
   window.dispatchEvent(new CustomEvent('imtiyo_open_auth_modal', { detail: { reason } }));
 }
 
-export default function AppShell({ children, hideSearch = false }) {
+export default function AppShell({
+  children,
+  hideSearch = false,
+  breadcrumbs = null,
+  showImtiyoAbout = false,
+}) {
   const navigate = useNavigate();
-  const location = useLocation();
   const { profile, signOut } = useStudent();
 
   const [allBrands, setAllBrands] = useState([]);
   const [allOffers, setAllOffers] = useState([]);
 
-  // 5-rasmdagidek Inline Qidiruv Dropdown state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -85,23 +80,29 @@ export default function AppShell({ children, hideSearch = false }) {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [authPromptReason, setAuthPromptReason] = useState('default');
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
 
   const searchWrapRef = useRef(null);
+  const mobileSearchWrapRef = useRef(null);
   const notifRef = useRef(null);
   const userMenuRef = useRef(null);
 
   useEffect(() => {
+    let active = true;
     Promise.all([
       api.listBrands().catch(() => sampleBrands),
       api.listAllOffers().catch(() => sampleOffers),
     ]).then(([bList, oList]) => {
+      if (!active) return;
       setAllBrands(Array.isArray(bList) && bList.length ? bList : sampleBrands);
       setAllOffers(Array.isArray(oList) && oList.length ? oList : sampleOffers);
     });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  // 5-rasmdagidek qidiruv natijalari (Recommended yoki yozilgan so'z bo'yicha)
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const list = allBrands.map((b) => {
@@ -133,8 +134,7 @@ export default function AppShell({ children, hideSearch = false }) {
     );
   }, [allBrands, allOffers, searchQuery]);
 
-  // Saqlanganlarni jonli yuklash
-  const refreshLikes = async () => {
+  const refreshLikes = useCallback(async () => {
     const rawIds = api.getLikedIds();
     const ids = (Array.isArray(rawIds) ? rawIds : [])
       .map((x) => String(x).trim())
@@ -148,8 +148,8 @@ export default function AppShell({ children, hideSearch = false }) {
 
     try {
       const [apiBrands, apiOffers] = await Promise.all([
-        api.listBrands().catch(() => []),
-        api.listAllOffers().catch(() => []),
+        allBrands.length ? Promise.resolve(allBrands) : api.listBrands().catch(() => []),
+        allOffers.length ? Promise.resolve(allOffers) : api.listAllOffers().catch(() => []),
       ]);
 
       const mergedBrands = [...(apiBrands || []), ...(sampleBrands || [])];
@@ -160,7 +160,7 @@ export default function AppShell({ children, hideSearch = false }) {
 
       ids.forEach((rawId) => {
         if (seenLikeIds.has(rawId)) return;
-        const cleanId = rawId.replace(/^brand-/, '');
+        const cleanId = rawId.replace(/^(brand[-:]|offer:)/, '');
 
         const matchedBrand = mergedBrands.find(
           (b) =>
@@ -190,7 +190,9 @@ export default function AppShell({ children, hideSearch = false }) {
           return;
         }
 
-        const matchedOffer = mergedOffers.find((o) => String(o.id) === rawId);
+        const matchedOffer = mergedOffers.find(
+          (o) => String(o.id) === rawId || String(o.id) === cleanId
+        );
         if (matchedOffer) {
           seenLikeIds.add(rawId);
           const parentBrand = mergedBrands.find(
@@ -236,17 +238,18 @@ export default function AppShell({ children, hideSearch = false }) {
     } catch {
       /* ignore */
     }
-  };
+  }, [allBrands, allOffers]);
 
   useEffect(() => {
     refreshLikes();
     window.addEventListener('imtiyo_likes_changed', refreshLikes);
     return () => window.removeEventListener('imtiyo_likes_changed', refreshLikes);
-  }, []);
+  }, [refreshLikes]);
 
   useEffect(() => {
-    const handleOpenAuth = () => {
+    const handleOpenAuth = (e) => {
       if (!profile?.signedIn || profile?.status !== 'verified') {
+        setAuthPromptReason(e?.detail?.reason || 'default');
         setAuthPromptOpen(true);
       }
     };
@@ -256,7 +259,9 @@ export default function AppShell({ children, hideSearch = false }) {
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+      const inDesktopSearch = searchWrapRef.current?.contains(e.target);
+      const inMobileSearch = mobileSearchWrapRef.current?.contains(e.target);
+      if (!inDesktopSearch && !inMobileSearch) {
         setSearchOpen(false);
       }
       if (notifRef.current && !notifRef.current.contains(e.target)) {
@@ -290,29 +295,86 @@ export default function AppShell({ children, hideSearch = false }) {
     .join('')
     .toUpperCase();
 
+  const renderSearchDropdown = () => (
+    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[420px] overflow-y-auto rounded-[24px] border border-white/80 bg-white/95 p-3 shadow-[0_28px_70px_-15px_rgba(8,18,58,0.28)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_28px_70px_-15px_rgba(0,0,0,0.75)]">
+      <p className="px-3 pb-2 pt-1 text-[12px] font-extrabold text-[#08123A] dark:text-slate-100">
+        {searchQuery.trim() ? 'Qidiruv natijalari' : 'Tavsiya etilganlar (Recommended)'}
+      </p>
+
+      {searchResults.length === 0 ? (
+        <div className="py-8 text-center text-[13px] font-semibold text-slate-400">
+          Hech narsa topilmadi
+        </div>
+      ) : (
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          {searchResults.map((item) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                onMouseEnter={() => api.prefetchBrand(item.id)}
+                onClick={() => {
+                  setSearchOpen(false);
+                  setSearchQuery('');
+                  navigate(`/brand/${item.id}`);
+                }}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/80"
+              >
+                <div className="flex min-w-0 items-center gap-3.5">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-100 bg-white text-[12px] font-black text-[#08123A] shadow-sm dark:border-slate-700">
+                    {item.logo_url ? (
+                      <img
+                        src={item.logo_url}
+                        alt={item.name}
+                        className="h-full w-full object-contain p-1"
+                      />
+                    ) : (
+                      <span style={{ color: item.accent }}>{item.monogram}</span>
+                    )}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-extrabold text-[#08123A] dark:text-slate-100">
+                      {item.name}
+                    </p>
+                    <p className="mt-0.5 truncate text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                      {item.subtitle}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
   return (
-    <div className="relative flex min-h-screen w-full flex-col bg-[#F7F8FC] pb-20 md:pb-0">
+    <div className="relative flex min-h-screen w-full flex-col bg-white text-[#08123A] pb-24 transition-colors duration-200 dark:bg-[#070d1f] dark:text-slate-100 md:pb-0">
       {/* =========================================================
-          YUQORI HEADER (1 QATORLI, KATTALASHTIRILGAN VA 5-RASMDAGIDEK INLINE SEARCH DROPDOWN BILAN)
+          GLASSMORPHISM HEADER (Logo oval ichida + barcha elementlar glass)
       ========================================================= */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/90 backdrop-blur-2xl">
-        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-4 py-3.5 md:px-8">
-          <Link to="/" className="shrink-0">
-            <Logo size="md" />
+      <header className="sticky top-0 z-40 border-b border-white/60 bg-white/70 backdrop-blur-2xl shadow-[0_8px_32px_-14px_rgba(0,45,150,0.14)] dark:border-white/10 dark:bg-[#0B1228]/75 dark:shadow-[0_10px_34px_-14px_rgba(0,0,0,0.6)]">
+        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-2.5 px-3.5 py-2.5 sm:gap-3.5 sm:px-6 md:px-8">
+          {/* LOGO OVAL ICHIDA (Glassmorphism) */}
+          <Link
+            to="/"
+            className="imtiyo-glass-pill inline-flex shrink-0 items-center rounded-full px-3 py-1.5 sm:px-4 sm:py-1.5"
+          >
+            <Logo size="sm" />
           </Link>
 
-          {/* QIDIRUV INPUTI: LUPA O'NGROQQA SURILDI (pl-5) */}
+          {/* DESKTOP & TABLET GLASS QIDIRUV */}
           {!hideSearch && (
-            <div ref={searchWrapRef} className="relative max-w-xl flex-1">
+            <div ref={searchWrapRef} className="relative hidden max-w-xl flex-1 md:block">
               <div
                 className={cn(
-                  'flex h-11 w-full items-center gap-3 rounded-full border bg-white pl-5 pr-4 transition-all',
-                  searchOpen
-                    ? 'border-[#5B21B6] ring-2 ring-[#5B21B6]/15 shadow-md'
-                    : 'border-slate-200/90 shadow-2xs hover:border-slate-300'
+                  'imtiyo-glass-pill flex h-10 w-full items-center gap-2.5 rounded-full pl-4 pr-3.5 transition-all',
+                  searchOpen &&
+                    '!border-[#1D6FF2]/60 ring-2 ring-[#1D6FF2]/20 dark:!border-sky-400/50 dark:ring-sky-400/20'
                 )}
               >
-                <Search className="ml-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                <Search className="h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -322,78 +384,29 @@ export default function AppShell({ children, hideSearch = false }) {
                     setSearchOpen(true);
                   }}
                   placeholder="Hamkor brend yoki chegirma qidiring..."
-                  className="h-full w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none placeholder:font-medium placeholder:text-slate-400"
+                  className="h-full w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none placeholder:font-medium placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    aria-label="Tozalash"
+                    className="grid h-6 w-6 place-items-center rounded-full bg-slate-200/70 text-slate-600 hover:bg-slate-200 dark:bg-slate-700/80 dark:text-slate-200"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
 
-              {searchOpen && (
-                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[420px] overflow-y-auto rounded-[24px] border border-slate-200/80 bg-white p-3 shadow-[0_28px_70px_-15px_rgba(8,18,58,0.28)]">
-                  <p className="px-3 pb-2 pt-1 text-[12px] font-extrabold text-[#08123A]">
-                    {searchQuery.trim() ? 'Qidiruv natijalari' : 'Tavsiya etilganlar (Recommended)'}
-                  </p>
-
-                  {searchResults.length === 0 ? (
-                    <div className="py-8 text-center text-[13px] font-semibold text-slate-400">
-                      Hech narsa topilmadi
-                    </div>
-                  ) : (
-                    <ul className="divide-y divide-slate-100">
-                      {searchResults.map((item) => (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSearchOpen(false);
-                              setSearchQuery('');
-                              navigate(`/brand/${item.id}`);
-                            }}
-                            className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
-                          >
-                            <div className="flex min-w-0 items-center gap-3.5">
-                              <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-100 bg-white text-[12px] font-black text-[#08123A] shadow-2xs">
-                                {item.logo_url ? (
-                                  <img
-                                    src={item.logo_url}
-                                    alt={item.name}
-                                    className="h-full w-full object-contain p-1"
-                                  />
-                                ) : (
-                                  <span style={{ color: item.accent }}>{item.monogram}</span>
-                                )}
-                              </span>
-                              <div className="min-w-0">
-                                <p className="truncate text-[13.5px] font-extrabold text-[#08123A]">
-                                  {item.name}
-                                </p>
-                                <p className="mt-0.5 truncate text-[12px] font-medium text-slate-500">
-                                  {item.subtitle}
-                                </p>
-                              </div>
-                            </div>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
+              {searchOpen && renderSearchDropdown()}
             </div>
           )}
 
-          {/* O'NG TOMON: TIL + YURAKCHA (OQ) + QO'NG'IROQCHA + PROFIL (GOOGLE RASMI ANIQ 28x28px) */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* O'NG TOMON ELEMENTLARI (Barchasi glassmorphism uslubida) */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <LanguageSwitcher />
 
+            {/* SEVIMLILAR / YOQTIRGANLAR */}
             <button
               type="button"
               onClick={() => {
@@ -401,16 +414,17 @@ export default function AppShell({ children, hideSearch = false }) {
                 setSavedModalOpen(true);
               }}
               aria-label="Saqlanganlar"
-              className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200/90 bg-white text-[#08123A] shadow-2xs transition-transform hover:scale-105"
+              className="imtiyo-glass-pill relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
             >
-              <Heart className="h-[18px] w-[18px] fill-transparent text-[#08123A]" />
+              <Heart className="h-[18px] w-[18px] fill-transparent text-current" />
               {likedIds.length > 0 && (
-                <span className="absolute -right-1 -top-1 grid h-4.5 min-w-[18px] place-items-center rounded-full border border-slate-200 bg-white px-1 text-[10px] font-extrabold text-[#08123A] shadow-2xs">
+                <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full border border-white bg-[#1D6FF2] px-1 text-[10px] font-extrabold text-white shadow-sm dark:border-[#0B1228]">
                   {likedIds.length}
                 </span>
               )}
             </button>
 
+            {/* BILDIRISHNOMALAR */}
             <div ref={notifRef} className="relative">
               <button
                 type="button"
@@ -419,21 +433,21 @@ export default function AppShell({ children, hideSearch = false }) {
                   if (!notifOpen) markAllRead();
                 }}
                 aria-label="Bildirishnomalar"
-                className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200/90 bg-white text-[#08123A] shadow-2xs transition-transform hover:scale-105"
+                className="imtiyo-glass-pill relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
               >
-                <Bell className="h-[18px] w-[18px] text-[#08123A]" />
+                <Bell className="h-[18px] w-[18px] text-current" />
                 {unreadCount > 0 && (
-                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#1D6FF2] ring-2 ring-white" />
+                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#1D6FF2] ring-2 ring-white dark:bg-sky-400 dark:ring-[#0B1228]" />
                 )}
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white p-3.5 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.35)]">
-                  <div className="mb-2.5 flex items-center justify-between border-b border-slate-100 pb-2">
-                    <span className="text-[13px] font-extrabold text-[#08123A]">
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-3.5 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
+                  <div className="mb-2.5 flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                    <span className="text-[13px] font-extrabold text-[#08123A] dark:text-white">
                       Bildirishnomalar
                     </span>
-                    <span className="rounded-full bg-[#002D96]/10 px-2 py-0.5 text-[10px] font-bold text-[#002D96]">
+                    <span className="rounded-full bg-[#1D6FF2]/10 px-2.5 py-0.5 text-[10px] font-bold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
                       Ilova xabarlari
                     </span>
                   </div>
@@ -441,15 +455,17 @@ export default function AppShell({ children, hideSearch = false }) {
                     {notifications.map((n) => (
                       <li
                         key={n.id}
-                        className="rounded-2xl border border-slate-100 bg-slate-50/70 p-2.5 text-[12px]"
+                        className="rounded-2xl border border-slate-100 bg-slate-50/80 p-2.5 text-[12px] dark:border-slate-800 dark:bg-slate-800/70"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <p className="font-extrabold text-[#08123A]">{n.title}</p>
+                          <p className="font-extrabold text-[#08123A] dark:text-slate-100">
+                            {n.title}
+                          </p>
                           <span className="shrink-0 text-[10px] font-semibold text-slate-400">
                             {n.time}
                           </span>
                         </div>
-                        <p className="mt-1 text-[11.5px] leading-relaxed text-slate-600">
+                        <p className="mt-1 text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-300">
                           {n.desc}
                         </p>
                       </li>
@@ -459,14 +475,15 @@ export default function AppShell({ children, hideSearch = false }) {
               )}
             </div>
 
+            {/* ISM VA FAMILIYA (YOKI KIRISH / RO'YXATDAN O'TISH) */}
             {profile?.signedIn ? (
               <div ref={userMenuRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setUserMenuOpen((v) => !v)}
-                  className="flex h-10 items-center gap-2 rounded-full border border-slate-200/90 bg-white pl-1.5 pr-3.5 text-left shadow-2xs transition-all hover:border-[#1D6FF2]"
+                  className="imtiyo-glass-pill flex h-10 items-center gap-2 rounded-full pl-1.5 pr-2.5 sm:pr-3.5 text-left"
                 >
-                  <span className="grid h-7 w-7 min-w-[28px] max-w-[28px] shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#002D96] to-[#00A9FF] text-[11px] font-extrabold text-white">
+                  <span className="grid h-7 w-7 min-w-[28px] max-w-[28px] shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#002D96] to-[#00A9FF] text-[11px] font-extrabold text-white shadow-sm">
                     {profile.avatar_url ? (
                       <img
                         src={profile.avatar_url}
@@ -478,20 +495,20 @@ export default function AppShell({ children, hideSearch = false }) {
                       initials
                     )}
                   </span>
-                  <span className="hidden max-w-[130px] truncate text-[13px] font-extrabold text-[#08123A] sm:inline-block">
+                  <span className="hidden max-w-[140px] truncate text-[13px] font-extrabold text-[#08123A] dark:text-slate-100 sm:inline-block">
                     {profile.name}
                   </span>
                   <ChevronDown
                     className={cn(
-                      'h-4 w-4 text-slate-400 transition-transform',
+                      'h-4 w-4 text-slate-500 transition-transform dark:text-slate-400',
                       userMenuOpen && 'rotate-180'
                     )}
                   />
                 </button>
 
                 {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white p-2 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.4)]">
-                    <div className="mb-1.5 flex items-center gap-2.5 border-b border-slate-100 px-3 py-2">
+                  <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.4)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
+                    <div className="mb-1.5 flex items-center gap-2.5 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
                       <span className="grid h-8 w-8 min-w-[32px] max-w-[32px] shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#002D96] to-[#00A9FF] text-[11.5px] font-extrabold text-white">
                         {profile.avatar_url ? (
                           <img
@@ -505,10 +522,10 @@ export default function AppShell({ children, hideSearch = false }) {
                         )}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-[13px] font-extrabold text-[#08123A]">
+                        <p className="truncate text-[13px] font-extrabold text-[#08123A] dark:text-white">
                           {profile.name}
                         </p>
-                        <p className="truncate font-mono text-[10.5px] font-bold text-[#1D6FF2]">
+                        <p className="truncate font-mono text-[10.5px] font-bold text-[#1D6FF2] dark:text-sky-400">
                           ID: #{profile.student_id}
                         </p>
                       </div>
@@ -521,9 +538,9 @@ export default function AppShell({ children, hideSearch = false }) {
                           setUserMenuOpen(false);
                           navigate('/profile');
                         }}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-50"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
-                        <User className="h-4 w-4 text-[#1D6FF2]" />
+                        <User className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
                         <span>Mening profilim</span>
                       </button>
 
@@ -533,10 +550,10 @@ export default function AppShell({ children, hideSearch = false }) {
                           setUserMenuOpen(false);
                           navigate('/settings');
                         }}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-50"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
-                        <Settings className="h-4 w-4 text-[#1D6FF2]" />
-                        <span>Profil sozlamalari (Settings)</span>
+                        <Settings className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
+                        <span>Profil sozlamalari</span>
                       </button>
 
                       <button
@@ -545,9 +562,9 @@ export default function AppShell({ children, hideSearch = false }) {
                           setUserMenuOpen(false);
                           navigate('/profile#codes');
                         }}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-50"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
-                        <Ticket className="h-4 w-4 text-[#1D6FF2]" />
+                        <Ticket className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
                         <span>Promo kodlarim</span>
                       </button>
 
@@ -557,33 +574,35 @@ export default function AppShell({ children, hideSearch = false }) {
                           setUserMenuOpen(false);
                           navigate('/about');
                         }}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-50"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
-                        <Info className="h-4 w-4 text-[#1D6FF2]" />
+                        <Info className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
                         <span>Biz haqimizda</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          navigate('/help');
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-50"
+                      <a
+                        href="/help"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
-                        <HelpCircle className="h-4 w-4 text-[#1D6FF2]" />
-                        <span>Bog‘lanish va Yordam</span>
-                      </button>
+                        <span className="flex items-center gap-2.5">
+                          <HelpCircle className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
+                          <span>Yordam (Help)</span>
+                        </span>
+                        <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                      </a>
                     </div>
 
-                    <div className="mt-1.5 border-t border-slate-100 pt-1.5">
+                    <div className="mt-1.5 border-t border-slate-100 pt-1.5 dark:border-slate-800">
                       <button
                         type="button"
                         onClick={() => {
                           setUserMenuOpen(false);
                           setShowLogoutConfirm(true);
                         }}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-rose-600 hover:bg-rose-50"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
                       >
                         <LogOut className="h-4 w-4" />
                         <span>Chiqish</span>
@@ -593,59 +612,106 @@ export default function AppShell({ children, hideSearch = false }) {
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <Link
                   to="/welcome?mode=signin"
-                  className="hidden h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-extrabold text-[#08123A] transition-colors hover:border-[#1D6FF2] sm:inline-flex"
+                  className="imtiyo-glass-pill hidden h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-extrabold text-[#08123A] hover:text-[#002D96] dark:text-slate-100 dark:hover:text-sky-300 lg:inline-flex"
                 >
                   Kirish
                 </Link>
                 <Link
                   to="/welcome?mode=signup"
-                  className="inline-flex h-10 items-center gap-1.5 rounded-full bg-gradient-to-r from-[#002D96] to-[#5B21B6] px-4.5 text-[13px] font-extrabold text-white shadow-sm"
+                  className="inline-flex h-10 min-w-[138px] shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-gradient-to-r from-[#002D96] via-[#1D6FF2] to-[#00A9FF] px-5 text-[12.5px] font-extrabold leading-none text-white shadow-[0_10px_24px_-10px_rgba(0,45,150,0.85)] transition-all hover:scale-[1.02] hover:brightness-105 sm:min-w-[158px] sm:px-6 sm:text-[13px]"
                 >
-                  <span>Ro‘yxatdan o‘tish</span>
+                  Ro‘yxatdan o‘tish
                 </Link>
               </div>
             )}
           </div>
         </div>
-      </header> 
 
-      {/* ASOSIY KONTENT */}
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pt-5 md:px-8">
-        {children}
-      </main>
+        {/* MOBIL GLASS QIDIRUV QATORI (< md) */}
+        {!hideSearch && (
+          <div ref={mobileSearchWrapRef} className="relative px-3.5 pb-2.5 md:hidden">
+            <div
+              className={cn(
+                'imtiyo-glass-pill flex h-10 w-full items-center gap-2.5 rounded-full pl-4 pr-3.5 transition-all',
+                searchOpen &&
+                  '!border-[#1D6FF2]/60 ring-2 ring-[#1D6FF2]/20 dark:!border-sky-400/50'
+              )}
+            >
+              <Search className="h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={() => setSearchOpen(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchOpen(true);
+                }}
+                placeholder="Hamkor brend yoki chegirma qidiring..."
+                className="h-full w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none placeholder:font-medium placeholder:text-slate-400 dark:text-slate-100"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="grid h-6 w-6 place-items-center rounded-full bg-slate-200/70 text-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {searchOpen && renderSearchDropdown()}
+          </div>
+        )}
+      </header>
 
       {/* =========================================================
-          2-RASMDAGIDEK QISQA "IMTIYO NIMA?" BLOKI + 1-RASMDAGIDEK APP BANNER VA FOOTER
+          GLOBAL YUQORI GRADIENT + ASOSIY KONTENT + UNIFIED BREADCRUMB
       ========================================================= */}
-      <div className="mt-16">
-        {/* 2-RASM: QISQA BIZ HAQIMIZDA ("IMTIYO nima?") BLOKI */}
-        <div className="mx-auto w-full max-w-[1440px] px-4 pb-12 md:px-8">
-          <div className="rounded-[24px] bg-[#EDE9FE]/75 p-7 md:p-9 dark:bg-slate-800/80">
-            <h2 className="text-[20px] font-extrabold text-[#08123A] dark:text-white">
-              IMTIYO nima?
-            </h2>
-            <p className="mt-3 text-[14px] leading-relaxed font-medium text-slate-700 dark:text-slate-300">
-              <strong>IMTIYO</strong> — O‘zbekistondagi oliy va o‘rta-maxsus ta’lim muassasalari
-              talabalari uchun mo‘ljallangan imtiyozlar va eksklyuziv chegirmalar platformasi. Biz
-              100 dan ortiq yetakchi brendlar bilan hamkorlik qilib, texnologiya, taomlar, kiyim-kechak,
-              ta’lim, sport va ko‘ngilochar maskanlarda eng yaxshi takliflarni taqdim etamiz.
-            </p>
-            <p className="mt-3 text-[14px] leading-relaxed font-medium text-slate-700 dark:text-slate-300">
-              Bizning maqsadimiz — talabalarga o‘zlari sevgan mahsulot va xizmatlardan foydalanishda
-              mablag‘larini tejashga yordam berishdir. Har kuni yangi talaba chegirmalarini qo‘shib
-              boramiz, shunda siz doimo eng foydali aksiyalardan birinchi bo‘lib foydalanasiz.
-            </p>
-            <p className="mt-3 text-[14px] font-bold text-[#08123A] dark:text-white">
-              IMTIYO orqali tejayotgan minglab faol talabalar safiga qo‘shiling!
-            </p>
-          </div>
-        </div>
+      <div className="relative flex-1">
+        <PageTopGradient />
 
-        {/* 1-RASM: APP PROMO BANNER (BINAFSHA-KO'K GRADIENT VA TELEFON MAKETLARI) */}
-        <section className="relative overflow-hidden bg-gradient-to-r from-[#5B21B6] via-[#3B0764] to-[#1E1035] text-white">
+        <main className="relative z-10 mx-auto w-full max-w-[1440px] px-4 pt-5 md:px-8">
+          {breadcrumbs !== false && Array.isArray(breadcrumbs) && (
+            <PageBreadcrumb items={breadcrumbs} />
+          )}
+          {children}
+        </main>
+      </div>
+
+      {/* =========================================================
+          "IMTIYO NIMA?" — FAQAT KATEGORIYA SAHIFALARI TAGIDA CHIQADI
+      ========================================================= */}
+      <div className="relative z-10 mt-16">
+        {showImtiyoAbout && (
+          <div className="mx-auto w-full max-w-[1440px] px-4 pb-12 md:px-8">
+            <div className="rounded-[24px] border border-[#1D6FF2]/15 bg-gradient-to-br from-[#EEF4FF] via-[#F3EEFF] to-[#FFF4F0] p-7 shadow-sm dark:border-slate-700/60 dark:from-slate-900 dark:via-[#0F1B3A] dark:to-slate-900 md:p-9">
+              <h2 className="text-[20px] font-extrabold text-[#08123A] dark:text-white">
+                IMTIYO nima?
+              </h2>
+              <p className="mt-3 text-[14px] leading-relaxed font-medium text-slate-700 dark:text-slate-300">
+                <strong>IMTIYO</strong> — O‘zbekistondagi oliy va o‘rta-maxsus ta’lim muassasalari
+                talabalari uchun mo‘ljallangan imtiyozlar va eksklyuziv chegirmalar platformasi. Biz
+                100 dan ortiq yetakchi brendlar bilan hamkorlik qilib, texnologiya, taomlar,
+                kiyim-kechak, ta’lim, sport va ko‘ngilochar maskanlarda eng yaxshi takliflarni
+                taqdim etamiz.
+              </p>
+              <p className="mt-3 text-[14px] leading-relaxed font-medium text-slate-700 dark:text-slate-300">
+                Bizning maqsadimiz — talabalarga o‘zlari sevgan mahsulot va xizmatlardan foydalanishda
+                mablag‘larini tejashga yordam berishdir. Har kuni yangi talaba chegirmalarini qo‘shib
+                boramiz, shunda siz doimo eng foydali aksiyalardan birinchi bo‘lib foydalanasiz.
+              </p>
+              <p className="mt-3 text-[14px] font-bold text-[#002D96] dark:text-sky-300">
+                IMTIYO orqali tejayotgan minglab faol talabalar safiga qo‘shiling!
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* APP PROMO BANNER */}
+        <section className="relative overflow-hidden bg-gradient-to-r from-[#002D96] via-[#1E1B4B] to-[#0B1228] text-white">
           <div className="mx-auto grid max-w-[1440px] grid-cols-1 items-center gap-8 px-4 py-12 md:grid-cols-12 md:px-8">
             <div className="space-y-4 md:col-span-7">
               <h2 className="text-[26px] font-black leading-tight md:text-[34px]">
@@ -660,7 +726,7 @@ export default function AppShell({ children, hideSearch = false }) {
                 <a
                   href="#google-play"
                   onClick={(e) => e.preventDefault()}
-                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black px-4 py-2.5 text-left transition-transform hover:scale-105"
+                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 px-4 py-2.5 text-left transition-transform hover:scale-105"
                 >
                   <span className="text-[20px]">▶️</span>
                   <div>
@@ -674,7 +740,7 @@ export default function AppShell({ children, hideSearch = false }) {
                 <a
                   href="#app-store"
                   onClick={(e) => e.preventDefault()}
-                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black px-4 py-2.5 text-left transition-transform hover:scale-105"
+                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 px-4 py-2.5 text-left transition-transform hover:scale-105"
                 >
                   <span className="text-[20px]"></span>
                   <div>
@@ -686,7 +752,7 @@ export default function AppShell({ children, hideSearch = false }) {
                 </a>
               </div>
 
-              <div className="inline-flex flex-col rounded-2xl bg-[#6D28D9]/80 px-4 py-2.5 backdrop-blur-md">
+              <div className="inline-flex flex-col rounded-2xl border border-white/15 bg-white/10 px-4 py-2.5 backdrop-blur-md">
                 <span className="text-[11px] font-semibold text-white/85">
                   O‘rtacha ilova reytingi
                 </span>
@@ -703,7 +769,6 @@ export default function AppShell({ children, hideSearch = false }) {
               </div>
             </div>
 
-            {/* Telefon maketlari */}
             <div className="hidden justify-center gap-5 md:col-span-5 md:flex">
               <div className="w-48 rounded-[32px] border-[6px] border-slate-900 bg-white p-3 text-[#08123A] shadow-2xl">
                 <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-slate-900" />
@@ -715,8 +780,12 @@ export default function AppShell({ children, hideSearch = false }) {
                   <p className="mt-4 text-[10px] font-extrabold">Eksklyuziv chegirmalar</p>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold">EVOS</div>
-                  <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold">Safia</div>
+                  <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold text-[#08123A]">
+                    EVOS
+                  </div>
+                  <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold text-[#08123A]">
+                    Safia
+                  </div>
                 </div>
               </div>
 
@@ -738,8 +807,8 @@ export default function AppShell({ children, hideSearch = false }) {
           </div>
         </section>
 
-        {/* 1-RASM: DARK FOOTER */}
-        <footer className="bg-[#1C1219] text-white">
+        {/* DARK FOOTER */}
+        <footer className="border-t border-white/10 bg-[#070B18] text-white">
           <div className="mx-auto max-w-[1440px] px-4 py-12 md:px-8">
             <div className="grid grid-cols-1 gap-8 pb-10 sm:grid-cols-2 md:grid-cols-4">
               <div>
@@ -765,7 +834,7 @@ export default function AppShell({ children, hideSearch = false }) {
                     <a
                       href="https://t.me/imtiyosupport_bot"
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="hover:text-white hover:underline"
                     >
                       @imtiyosupport_bot
@@ -783,9 +852,15 @@ export default function AppShell({ children, hideSearch = false }) {
                     </Link>
                   </li>
                   <li>
-                    <Link to="/help" className="hover:text-white hover:underline">
-                      Hamkorlar va Yordam (FAQ)
-                    </Link>
+                    <a
+                      href="/help"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-white hover:underline"
+                    >
+                      <span>Hamkorlar va Yordam (FAQ)</span>
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
                   </li>
                   <li>
                     <Link to="/map" className="hover:text-white hover:underline">
@@ -799,19 +874,37 @@ export default function AppShell({ children, hideSearch = false }) {
                 <h3 className="text-[13.5px] font-extrabold text-white">Hujjatlar</h3>
                 <ul className="mt-3 space-y-2 text-[12.5px] text-white/75">
                   <li>
-                    <Link to="/settings" className="hover:text-white hover:underline">
-                      Foydalanish shartlari
-                    </Link>
+                    <a
+                      href="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-white hover:underline"
+                    >
+                      <span>Foydalanish shartlari</span>
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
                   </li>
                   <li>
-                    <Link to="/settings" className="hover:text-white hover:underline">
-                      Maxfiylik siyosati
-                    </Link>
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-white hover:underline"
+                    >
+                      <span>Maxfiylik siyosati</span>
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
                   </li>
                   <li>
-                    <Link to="/help" className="hover:text-white hover:underline">
-                      Ko‘p beriladigan savollar
-                    </Link>
+                    <a
+                      href="/help"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-white hover:underline"
+                    >
+                      <span>Ko‘p beriladigan savollar</span>
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
                   </li>
                 </ul>
               </div>
@@ -823,7 +916,7 @@ export default function AppShell({ children, hideSearch = false }) {
                 <a
                   href="https://t.me/imtiyosupport_bot"
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="text-white/70 hover:text-white"
                 >
                   <Send className="h-4 w-4" />
@@ -841,54 +934,30 @@ export default function AppShell({ children, hideSearch = false }) {
         </footer>
       </div>
 
-      {/* MOBIL PASTKI NAVIGATSIYA */}
-      <nav className="fixed inset-x-3 bottom-3 z-40 rounded-full border border-white/85 bg-white/90 p-1.5 shadow-[0_20px_50px_-15px_rgba(0,45,150,0.5)] backdrop-blur-2xl md:hidden">
-        <div className="grid grid-cols-4 gap-1">
-          {mobileNavItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  cn(
-                    'flex flex-col items-center justify-center gap-0.5 rounded-full py-2 text-[10.5px] font-extrabold transition-all',
-                    isActive
-                      ? 'bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-white shadow-xs'
-                      : 'text-slate-500'
-                  )
-                }
-              >
-                <Icon className="h-4 w-4" />
-                <span>{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </div>
-      </nav>
+      {/* MOBIL PASTKI LIQUID GLASS DOCK (Faqat mobile users uchun) */}
+      <MobileBottomDock />
 
       {/* SAQLANGANLAR MODALI */}
       {savedModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/55 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/60 p-4 backdrop-blur-sm"
           onClick={() => setSavedModalOpen(false)}
         >
           <div
-            className="max-h-[84vh] w-full max-w-md overflow-y-auto rounded-[28px] border border-white/85 bg-white p-5 shadow-2xl"
+            className="max-h-[84vh] w-full max-w-md overflow-y-auto rounded-[28px] border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700/70 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <Heart className="h-5 w-5 text-[#08123A]" />
-                <h3 className="text-[16px] font-extrabold text-[#08123A]">
+                <Heart className="h-5 w-5 text-[#1D6FF2] dark:text-sky-400" />
+                <h3 className="text-[16px] font-extrabold text-[#08123A] dark:text-white">
                   Saqlanganlar ({savedItems.length})
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSavedModalOpen(false)}
-                className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600"
+                className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -896,11 +965,11 @@ export default function AppShell({ children, hideSearch = false }) {
 
             {savedItems.length === 0 ? (
               <div className="py-10 text-center">
-                <Heart className="mx-auto h-8 w-8 text-slate-300" />
-                <p className="mt-2 text-[13.5px] font-extrabold text-[#08123A]">
+                <Heart className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
+                <p className="mt-2 text-[13.5px] font-extrabold text-[#08123A] dark:text-white">
                   Hozircha saqlangan chegirmalar yo‘q
                 </p>
-                <p className="mt-1 text-[12px] text-slate-500">
+                <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
                   Yoqqan chegirma yoki brend ustidagi yurakcha tugmasini bosing.
                 </p>
               </div>
@@ -909,7 +978,7 @@ export default function AppShell({ children, hideSearch = false }) {
                 {savedItems.map((item) => (
                   <li
                     key={item.likeId}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 transition-colors hover:bg-white"
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 transition-colors hover:bg-white dark:border-slate-800 dark:bg-slate-800/70 dark:hover:bg-slate-800"
                   >
                     <button
                       type="button"
@@ -920,7 +989,7 @@ export default function AppShell({ children, hideSearch = false }) {
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <span
-                        className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-100 bg-white text-[13px] font-black text-white"
+                        className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-100 bg-white text-[13px] font-black text-white dark:border-slate-700"
                         style={{ backgroundColor: item.logo_url ? '#fff' : item.accent }}
                       >
                         {item.logo_url ? (
@@ -934,14 +1003,14 @@ export default function AppShell({ children, hideSearch = false }) {
                         )}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-[13.5px] font-extrabold text-[#08123A]">
+                        <p className="truncate text-[13.5px] font-extrabold text-[#08123A] dark:text-slate-100">
                           {item.title}
                         </p>
                         <div className="mt-0.5 flex items-center gap-2">
-                          <span className="rounded-md bg-[#1D6FF2]/10 px-1.5 py-0.5 text-[10.5px] font-extrabold text-[#002D96]">
+                          <span className="rounded-md bg-[#1D6FF2]/10 px-1.5 py-0.5 text-[10.5px] font-extrabold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
                             {item.discount}
                           </span>
-                          <span className="truncate text-[11px] text-slate-500">
+                          <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                             {item.subtitle}
                           </span>
                         </div>
@@ -955,7 +1024,7 @@ export default function AppShell({ children, hideSearch = false }) {
                         refreshLikes();
                       }}
                       title="O‘chirish"
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-500"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-500 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-rose-950/60 dark:hover:text-rose-400"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -967,147 +1036,45 @@ export default function AppShell({ children, hideSearch = false }) {
         </div>
       )}
 
-      {/* UNIPERKS USLUBIDAGI 2 USTUNLI AUTH MODAL */}
-      {authPromptOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/60 p-4 backdrop-blur-xs"
-          onClick={() => setAuthPromptOpen(false)}
-        >
-          <div
-            className="relative grid w-full max-w-2xl grid-cols-1 overflow-hidden rounded-[28px] bg-white shadow-[0_30px_80px_-15px_rgba(0,0,0,0.45)] md:grid-cols-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setAuthPromptOpen(false)}
-              className="absolute right-4 top-4 z-20 grid h-8 w-8 place-items-center rounded-full bg-white text-[#08123A] shadow-md transition-transform hover:scale-105"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-            <div className="flex flex-col items-center justify-center p-7 text-center md:p-9">
-              <Logo size="md" />
-              {!profile?.signedIn ? (
-                <>
-                  <h3 className="mt-5 text-[19px] font-extrabold leading-snug text-[#08123A]">
-                    Hoziroq qo‘shiling va eng yaxshi talaba chegirmalarini kashf eting
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthPromptOpen(false);
-                      navigate('/welcome?mode=signup');
-                    }}
-                    className="mt-6 flex h-11 w-full items-center justify-center rounded-full bg-gradient-to-r from-[#002D96] via-[#1D6FF2] to-[#5B21B6] px-5 text-[13px] font-extrabold text-white shadow-md transition-transform hover:scale-[1.02]"
-                  >
-                    Hisob yaratish va chegirmalarni ochish!
-                  </button>
-                  <span className="my-3 text-[12px] font-semibold text-slate-400">yoki</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthPromptOpen(false);
-                      navigate('/welcome?mode=signin');
-                    }}
-                    className="flex h-11 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-[13.5px] font-extrabold text-[#08123A] hover:border-[#1D6FF2]"
-                  >
-                    Tizimga kirish
-                  </button>
-                </>
-              ) : (
-                <>
-                  <h3 className="mt-5 text-[19px] font-extrabold leading-snug text-[#08123A]">
-                    Chegirmalardan foydalanish uchun talabalik statusingizni tasdiqlang
-                  </h3>
-                  <p className="mt-2 text-[12.5px] text-slate-500">
-                    Talabalik guvohnomasi yoki HEMIS ma’lumotnomasini yuklang va barcha kodlarni
-                    oching.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthPromptOpen(false);
-                      setVerifyModalOpen(true);
-                    }}
-                    className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#002D96] via-[#1D6FF2] to-[#5B21B6] px-5 text-[13px] font-extrabold text-white shadow-md"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    Talabalikni tasdiqlash
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className="flex flex-col justify-center bg-gradient-to-br from-[#3B0764] via-[#1E1B4B] to-[#002D96] p-7 text-white md:p-9">
-              <h4 className="text-[19px] font-extrabold">Nega qo‘shilish kerak?</h4>
-              <div className="mt-6 space-y-5">
-                <div className="flex items-start gap-3.5">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15">
-                    <Percent className="h-5 w-5 text-sky-300" />
-                  </div>
-                  <div>
-                    <p className="text-[13.5px] font-extrabold">
-                      Eng yaxshi chegirmalarga kirish
-                    </p>
-                    <p className="mt-0.5 text-[12px] leading-relaxed text-white/80">
-                      Hamkor brendlarimizdan 50% gacha bo‘lgan eksklyuziv talaba chegirmalarini
-                      kashf eting.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3.5">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15">
-                    <GraduationCap className="h-5 w-5 text-sky-300" />
-                  </div>
-                  <div>
-                    <p className="text-[13.5px] font-extrabold">Faqat talabalar uchun bonuslar</p>
-                    <p className="mt-0.5 text-[12px] leading-relaxed text-white/80">
-                      IMTIYO imtiyozlaridan foydalanayotgan minglab faol talabalar safiga
-                      qo‘shiling.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3.5">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15">
-                    <Heart className="h-5 w-5 text-sky-300" />
-                  </div>
-                  <div>
-                    <p className="text-[13.5px] font-extrabold">Sevimli brendlar va aksiyalar</p>
-                    <p className="mt-0.5 text-[12px] leading-relaxed text-white/80">
-                      Yoqtirgan brendlaringizni saqlab qo‘ying va yangi promo-kodlardan birinchi
-                      bo‘lib xabardor bo‘ling.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* GUEST / UNVERIFIED AUTH PROMPT CARD MODAL (Uiverse MuhammadHasann) */}
+      <AuthPromptCardModal
+        open={authPromptOpen}
+        reason={authPromptReason}
+        signedIn={Boolean(profile?.signedIn)}
+        onClose={() => setAuthPromptOpen(false)}
+        onOpenVerify={() => setVerifyModalOpen(true)}
+      />
 
       <VerifyModal open={verifyModalOpen} onOpenChange={setVerifyModalOpen} />
 
+      {/* CHIQISHNI TASDIQLASH MODALI */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-[26px] bg-white p-5 shadow-2xl">
-            <h3 className="text-[16px] font-extrabold text-[#08123A]">Tizimdan chiqish</h3>
-            <p className="mt-1.5 text-[13px] text-slate-600">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/55 p-4 backdrop-blur-sm"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-[26px] border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[16px] font-extrabold text-[#08123A] dark:text-white">
+              Tizimdan chiqish
+            </h3>
+            <p className="mt-1.5 text-[13px] text-slate-600 dark:text-slate-300">
               Haqiqatan ham tizimdan chiqmoqchimisiz?
             </p>
             <div className="mt-5 flex gap-2.5">
               <button
                 type="button"
                 onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 rounded-full border border-slate-200 bg-white py-2.5 text-[12.5px] font-bold text-slate-600"
+                className="flex-1 rounded-full border border-slate-200 bg-white py-2.5 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 Yo‘q
               </button>
               <button
                 type="button"
                 onClick={handleConfirmLogout}
-                className="flex-1 rounded-full bg-rose-500 py-2.5 text-[12.5px] font-bold text-white"
+                className="flex-1 rounded-full bg-rose-500 py-2.5 text-[12.5px] font-bold text-white hover:bg-rose-600"
               >
                 Ha, chiqish
               </button>

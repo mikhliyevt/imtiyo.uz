@@ -40,8 +40,15 @@ export default function MapPage() {
   const [focus, setFocus] = useState({ ...TASHKENT_CENTER, zoom: 11 });
 
   useEffect(() => {
-    api.listLocations().then(setLocations);
-    api.listBrands().then(setBrands);
+    let active = true;
+    Promise.all([api.listLocations(), api.listBrands()]).then(([locs, brs]) => {
+      if (!active) return;
+      if (Array.isArray(locs) && locs.length) setLocations(locs);
+      if (Array.isArray(brs) && brs.length) setBrands(brs);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const brandById = useMemo(() => Object.fromEntries(brands.map((b) => [b.id, b])), [brands]);
@@ -55,12 +62,14 @@ export default function MapPage() {
     .sort((a, b) => a.distance - b.distance);
 
   return (
-    <AppShell>
+    <AppShell breadcrumbs={[{ label: 'Filiallar xaritasi' }]}>
       <header className="mb-4">
-        <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[#08123A]">
+        <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[#08123A] dark:text-white">
           {t('map.title')}
         </h1>
-        <p className="mt-1 text-[13px] font-medium text-slate-500">{t('map.subtitle')}</p>
+        <p className="mt-1 text-[13px] font-medium text-slate-500 dark:text-slate-400">
+          {t('map.subtitle')}
+        </p>
       </header>
 
       <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -72,14 +81,14 @@ export default function MapPage() {
               setFocus({ lat: city.lat, lng: city.lng, zoom: city.zoom });
               setSelected(null);
             }}
-            className="shrink-0 rounded-full border border-white/70 bg-white/70 px-3.5 py-1.5 text-[12px] font-semibold text-[#002D96] backdrop-blur-xl"
+            className="shrink-0 rounded-full border border-slate-200/80 bg-white/90 px-4 py-1.5 text-[12px] font-bold text-[#002D96] backdrop-blur-xl transition-colors hover:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300 dark:hover:border-sky-400"
           >
             {city.name}
           </button>
         ))}
       </div>
 
-      <div className="relative overflow-hidden rounded-[26px] border border-white/70 shadow-[0_26px_60px_-34px_rgba(0,45,150,0.7)]">
+      <div className="relative overflow-hidden rounded-[26px] border border-slate-200/80 shadow-[0_26px_60px_-34px_rgba(0,45,150,0.45)] dark:border-slate-800">
         <MapContainer
           center={TASHKENT_CENTER}
           zoom={11}
@@ -101,9 +110,13 @@ export default function MapPage() {
               >
                 <Popup>
                   <div className="min-w-[150px]">
-                    <p className="text-[12px] font-extrabold text-[#08123A]">{loc.brand.name}</p>
-                    <p className="text-[11px] text-slate-500">{loc.address}</p>
-                    <p className="mt-1 text-[11px] font-bold text-[#1D6FF2]">{loc.brand.discount}</p>
+                    <p className="text-[12px] font-extrabold text-[#08123A] dark:text-white">
+                      {loc.brand.name}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-300">{loc.address}</p>
+                    <p className="mt-1 text-[11px] font-bold text-[#1D6FF2] dark:text-sky-400">
+                      {loc.brand.discount}
+                    </p>
                   </div>
                 </Popup>
               </Marker>
@@ -112,7 +125,7 @@ export default function MapPage() {
         </MapContainer>
 
         {selected && (
-          <div className="absolute inset-x-3 bottom-3 z-[500] rounded-[22px] border border-white/70 bg-white/85 p-3.5 shadow-[0_20px_44px_-20px_rgba(0,45,150,0.75)] backdrop-blur-2xl">
+          <div className="absolute inset-x-3 bottom-3 z-[500] rounded-[22px] border border-white/80 bg-white/95 p-3.5 shadow-[0_20px_44px_-20px_rgba(0,45,150,0.65)] backdrop-blur-2xl dark:border-slate-700 dark:bg-slate-900/95">
             <div className="flex items-start gap-3">
               <div
                 className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-[15px] font-extrabold text-white"
@@ -124,18 +137,18 @@ export default function MapPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-[13px] font-extrabold text-[#08123A]">
+                  <p className="truncate text-[13px] font-extrabold text-[#08123A] dark:text-white">
                     {selected.brand.name}
                   </p>
-                  <span className="shrink-0 rounded-full bg-[#002D96]/10 px-2 py-0.5 text-[10px] font-bold text-[#002D96]">
+                  <span className="shrink-0 rounded-full bg-[#002D96]/10 px-2 py-0.5 text-[10px] font-bold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
                     {selected.brand.discount}
                   </span>
                 </div>
-                <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500">
+                <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500 dark:text-slate-400">
                   <MapPin className="h-3 w-3 shrink-0" />
                   {selected.address}
                 </p>
-                <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-[#1D6FF2]">
+                <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-[#1D6FF2] dark:text-sky-400">
                   <Navigation className="h-3 w-3" />
                   {selected.distance} km · {selected.city}
                 </p>
@@ -152,11 +165,11 @@ export default function MapPage() {
         )}
       </div>
 
-      <section className="mt-5">
-        <h2 className="mb-2 text-[13px] font-extrabold uppercase tracking-wide text-[#08123A]">
+      <section className="mt-6 pb-8">
+        <h2 className="mb-3 text-[13px] font-extrabold uppercase tracking-wide text-[#08123A] dark:text-slate-200">
           {t('map.locations')}
         </h2>
-        <ul className="space-y-2">
+        <ul className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           {enriched.map((loc) =>
             loc.brand ? (
               <li key={loc.id}>
@@ -166,7 +179,7 @@ export default function MapPage() {
                     setSelected(loc);
                     setFocus({ lat: loc.lat, lng: loc.lng, zoom: 14 });
                   }}
-                  className="flex w-full items-center gap-3 rounded-[20px] border border-white/70 bg-white/65 px-3.5 py-3 text-left backdrop-blur-xl transition-colors hover:bg-white/85"
+                  className="flex w-full items-center gap-3 rounded-[20px] border border-slate-200/80 bg-white/90 px-3.5 py-3 text-left backdrop-blur-xl transition-colors hover:border-[#1D6FF2]/50 hover:bg-white dark:border-slate-800 dark:bg-slate-900/85 dark:hover:border-sky-400/50 dark:hover:bg-slate-900"
                 >
                   <span
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[13px] font-extrabold text-white"
@@ -177,12 +190,14 @@ export default function MapPage() {
                     {loc.brand.monogram}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-bold text-[#08123A]">
+                    <span className="block truncate text-[12.5px] font-bold text-[#08123A] dark:text-white">
                       {loc.name}
                     </span>
-                    <span className="block truncate text-[11px] text-slate-500">{loc.address}</span>
+                    <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
+                      {loc.address}
+                    </span>
                   </span>
-                  <span className="shrink-0 text-[11px] font-bold text-[#1D6FF2]">
+                  <span className="shrink-0 text-[11px] font-bold text-[#1D6FF2] dark:text-sky-400">
                     {loc.distance} km
                   </span>
                 </button>

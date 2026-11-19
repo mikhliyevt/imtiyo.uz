@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   Globe,
@@ -6,15 +6,23 @@ import {
   Loader2,
   MapPin,
   Plus,
+  Save,
   Search,
   Trash2,
   Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { cn } from '@/lib/utils';
 
-export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
+export default function BrandForm({
+  initialBrand = null,
+  onSaved,
+  onCancel,
+  onDirtyChange,
+}) {
+  const { toast } = useToast();
   const [categoriesList, setCategoriesList] = useState(DEFAULT_CATEGORIES);
 
   const [name, setName] = useState(initialBrand?.name || '');
@@ -22,23 +30,19 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
     initialBrand?.categories?.length ? initialBrand.categories : ['food']
   );
 
-  // Rasm joylari (Logo va Slayd rasmi)
   const [logoUrl, setLogoUrl] = useState(initialBrand?.logo_url || '');
   const [coverUrl, setCoverUrl] = useState(initialBrand?.cover_url || '');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
 
-  // Brend haqida info
   const [descriptionUz, setDescriptionUz] = useState(initialBrand?.description?.uz || '');
 
-  // Ijtimoiy tarmoqlar (faqat kiritilganlari saytda ko'rinadi)
   const [website, setWebsite] = useState(initialBrand?.website || '');
   const [instagram, setInstagram] = useState(initialBrand?.instagram || '');
   const [facebook, setFacebook] = useState(initialBrand?.facebook || '');
   const [tiktok, setTiktok] = useState(initialBrand?.tiktok || '');
   const [linkedin, setLinkedin] = useState(initialBrand?.linkedin || '');
 
-  // Xarita qo'shasizmi? (Ha / Yo'q) va Lokatsiyalar
   const [hasMap, setHasMap] = useState(
     initialBrand ? Boolean(initialBrand.has_map) : false
   );
@@ -51,6 +55,23 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
 
   const [saving, setSaving] = useState(false);
 
+  const initialSnapshotRef = useRef(
+    JSON.stringify({
+      name: initialBrand?.name || '',
+      selectedCategories: initialBrand?.categories?.length ? initialBrand.categories : ['food'],
+      logoUrl: initialBrand?.logo_url || '',
+      coverUrl: initialBrand?.cover_url || '',
+      descriptionUz: initialBrand?.description?.uz || '',
+      website: initialBrand?.website || '',
+      instagram: initialBrand?.instagram || '',
+      facebook: initialBrand?.facebook || '',
+      tiktok: initialBrand?.tiktok || '',
+      linkedin: initialBrand?.linkedin || '',
+      hasMap: initialBrand ? Boolean(initialBrand.has_map) : false,
+      locations: [],
+    })
+  );
+
   useEffect(() => {
     api.listCategories().then((list) => {
       if (Array.isArray(list)) {
@@ -61,11 +82,80 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
       api.listLocations(initialBrand.id).then((locs) => {
         if (Array.isArray(locs) && locs.length > 0) {
           setLocations(locs);
-          setHasMap(Boolean(initialBrand.has_map));
+          const resolvedHasMap = Boolean(initialBrand.has_map);
+          setHasMap(resolvedHasMap);
+          initialSnapshotRef.current = JSON.stringify({
+            name: initialBrand?.name || '',
+            selectedCategories: initialBrand?.categories?.length
+              ? initialBrand.categories
+              : ['food'],
+            logoUrl: initialBrand?.logo_url || '',
+            coverUrl: initialBrand?.cover_url || '',
+            descriptionUz: initialBrand?.description?.uz || '',
+            website: initialBrand?.website || '',
+            instagram: initialBrand?.instagram || '',
+            facebook: initialBrand?.facebook || '',
+            tiktok: initialBrand?.tiktok || '',
+            linkedin: initialBrand?.linkedin || '',
+            hasMap: resolvedHasMap,
+            locations: locs,
+          });
         }
       });
     }
   }, [initialBrand]);
+
+  const currentSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        name,
+        selectedCategories,
+        logoUrl,
+        coverUrl,
+        descriptionUz,
+        website,
+        instagram,
+        facebook,
+        tiktok,
+        linkedin,
+        hasMap,
+        locations,
+      }),
+    [
+      name,
+      selectedCategories,
+      logoUrl,
+      coverUrl,
+      descriptionUz,
+      website,
+      instagram,
+      facebook,
+      tiktok,
+      linkedin,
+      hasMap,
+      locations,
+    ]
+  );
+
+  const isDirty = useMemo(() => {
+    if (!initialBrand) {
+      return Boolean(
+        name.trim() ||
+          descriptionUz.trim() ||
+          logoUrl.trim() ||
+          coverUrl.trim() ||
+          website.trim() ||
+          instagram.trim() ||
+          locations.length > 0
+      );
+    }
+    return currentSnapshot !== initialSnapshotRef.current;
+  }, [initialBrand, currentSnapshot, name, descriptionUz, logoUrl, coverUrl, website, instagram, locations.length]);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+    return () => onDirtyChange?.(false);
+  }, [isDirty, onDirtyChange]);
 
   const toggleCategory = (catId) => {
     setSelectedCategories((prev) =>
@@ -84,6 +174,8 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
     try {
       const url = await api.uploadFile(file, 'logos', { maxWidth: 400, maxHeight: 400 });
       setLogoUrl(url);
+    } catch {
+      toast({ title: 'Logo yuklashda xatolik yuz berdi', variant: 'destructive' });
     } finally {
       setUploadingLogo(false);
     }
@@ -96,12 +188,13 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
     try {
       const url = await api.uploadFile(file, 'slides', { maxWidth: 1200, maxHeight: 720 });
       setCoverUrl(url);
+    } catch {
+      toast({ title: 'Slayd rasmini yuklashda xatolik yuz berdi', variant: 'destructive' });
     } finally {
       setUploadingCover(false);
     }
   };
 
-  // Manzil yozilganda xaritadan koordinatasini avtomatik topish (OpenStreetMap Nominatim)
   const handleFindOnMap = async () => {
     if (!branchAddress.trim()) return;
     setSearchingGeo(true);
@@ -138,7 +231,7 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !isDirty) return;
     setSaving(true);
     try {
       const cleanSlug =
@@ -147,7 +240,6 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '') || 'brand-' + Date.now();
 
-      // Agar admin "Ha" deb manzil yozgan bo'lsa-yu, lekin "+" ni bosish esidan chiqqan bo'lsa, uni ham qo'shib ketamiz
       let finalLocations = [...locations];
       if (hasMap && finalLocations.length === 0 && (branchAddress.trim() || branchName.trim())) {
         finalLocations.push({
@@ -180,23 +272,41 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
         ? await api.updateBrand(initialBrand.id, payload)
         : await api.createBrand(payload);
 
+      initialSnapshotRef.current = currentSnapshot;
+      onDirtyChange?.(false);
       if (saved && onSaved) onSaved(saved);
+    } catch (err) {
+      toast({
+        title: 'Brendni saqlashda xatolik yuz berdi',
+        description: err?.message || 'Qaytadan urinib ko‘ring',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
   };
 
+  const inputCls =
+    'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-sky-400';
+
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-5 rounded-[28px] border border-white/85 bg-white p-6 shadow-md"
+      className="space-y-5 rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-md backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95"
     >
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
         <div>
-          <h3 className="text-[17px] font-extrabold text-[#08123A]">
-            {initialBrand ? `${initialBrand.name} — Tahrirlash` : 'Yangi hamkor brend qo‘shish'}
-          </h3>
-          <p className="text-[12px] text-slate-500">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[17px] font-extrabold text-[#08123A] dark:text-white">
+              {initialBrand ? `${initialBrand.name} — Tahrirlash` : 'Yangi hamkor brend qo‘shish'}
+            </h3>
+            {isDirty && (
+              <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10.5px] font-extrabold text-amber-700 dark:text-amber-300">
+                Saqlanmagan
+              </span>
+            )}
+          </div>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">
             Brend nomi, logosi, slayd rasmi, ijtimoiy tarmoqlar va xarita joylashuvini kiriting
           </p>
         </div>
@@ -204,7 +314,7 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
           <button
             type="button"
             onClick={onCancel}
-            className="text-[12px] font-bold text-slate-400 hover:text-slate-600"
+            className="text-[12px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
           >
             Bekor qilish
           </button>
@@ -213,7 +323,7 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
 
       {/* 1. BREND NOMI */}
       <div>
-        <label className="mb-1 block text-[11.5px] font-bold text-slate-600">
+        <label className="mb-1 block text-[11.5px] font-bold text-slate-600 dark:text-slate-300">
           Brend nomi *
         </label>
         <input
@@ -221,18 +331,18 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Masalan: Żabka, EVOS yoki Cambridge"
-          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13.5px] font-bold text-[#08123A] outline-none focus:border-[#1D6FF2]"
+          className={cn(inputCls, 'py-2.5 text-[13.5px] font-bold')}
         />
       </div>
 
       {/* 2. BREND LOGOSI VA SLAYD RASMI */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
-        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 md:col-span-5">
-          <label className="mb-2 block text-[11.5px] font-extrabold text-[#08123A]">
+        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/50 md:col-span-5">
+          <label className="mb-2 block text-[11.5px] font-extrabold text-[#08123A] dark:text-white">
             1. Brend logosi (Oq kvadratda chiqadi)
           </label>
           <div className="flex items-center gap-3">
-            <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xs">
+            <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
               {logoUrl ? (
                 <img src={logoUrl} alt="Logo" className="h-full w-full object-contain" />
               ) : (
@@ -258,18 +368,18 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
                 value={logoUrl}
                 onChange={(e) => setLogoUrl(e.target.value)}
                 placeholder="Yoki Logo URL..."
-                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold outline-none"
+                className={cn(inputCls, 'py-1.5 text-[11px]')}
               />
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 md:col-span-7">
-          <label className="mb-2 block text-[11.5px] font-extrabold text-[#08123A]">
+        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/50 md:col-span-7">
+          <label className="mb-2 block text-[11.5px] font-extrabold text-[#08123A] dark:text-white">
             2. Slayd va muqova rasmi (Avtomatik moslanadi)
           </label>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative h-20 w-full shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:w-40">
+            <div className="relative h-20 w-full shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800 sm:w-40">
               {coverUrl ? (
                 <img src={coverUrl} alt="Slide" className="h-full w-full object-cover" />
               ) : (
@@ -297,7 +407,7 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
                 value={coverUrl}
                 onChange={(e) => setCoverUrl(e.target.value)}
                 placeholder="Yoki rasm URL manzilini kiriting..."
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] font-semibold outline-none"
+                className={cn(inputCls, 'py-1.5 text-[11.5px]')}
               />
             </div>
           </div>
@@ -306,8 +416,8 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
 
       {/* 3. KOMPANIYA HAQIDA QISQA MA'LUMOT */}
       <div>
-        <label className="mb-1 block text-[11.5px] font-bold text-slate-600">
-          Kompaniya / Brend haqida qisqa ma’lumot (Brend sahifasida chiqadi) *
+        <label className="mb-1 block text-[11.5px] font-bold text-slate-600 dark:text-slate-300">
+          Kompaniya / Brend haqida qisqa ma’lumot *
         </label>
         <textarea
           required
@@ -315,75 +425,75 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
           value={descriptionUz}
           onChange={(e) => setDescriptionUz(e.target.value)}
           placeholder="Kompaniya faoliyati va talabalar uchun qanday imkoniyatlar berishi haqida qisqacha yozing..."
-          className="w-full rounded-xl border border-slate-200 bg-white p-3 text-[12.5px] font-medium outline-none focus:border-[#1D6FF2]"
+          className={cn(inputCls, 'p-3 font-medium')}
         />
       </div>
 
-      {/* 4. KOMPANIYA VEB-SAYTI VA IJTIMOIY TARMOQLARI (FAQAT YOZILGANLARI SAYTDA CHIQADI) */}
-      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4">
-        <label className="mb-1 flex items-center gap-1.5 text-[12px] font-extrabold text-[#08123A]">
-          <Globe className="h-4 w-4 text-[#1D6FF2]" />
+      {/* 4. IJTIMOIY TARMOQLAR */}
+      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/45">
+        <label className="mb-1 flex items-center gap-1.5 text-[12px] font-extrabold text-[#08123A] dark:text-white">
+          <Globe className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
           Kompaniya veb-sayti va ijtimoiy tarmoqlari
         </label>
-        <p className="mb-2.5 text-[11px] text-slate-500">
-          Faqat siz to‘ldirgan tarmoqlar saytda ko‘rinadi (bo‘sh qoldirilganlari saytda chiqmaydi)
+        <p className="mb-2.5 text-[11px] text-slate-500 dark:text-slate-400">
+          Faqat siz to‘ldirgan tarmoqlar saytda ko‘rinadi
         </p>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
           <input
             value={website}
             onChange={(e) => setWebsite(e.target.value)}
             placeholder="Veb-sayt (https://...)"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold outline-none focus:border-[#1D6FF2]"
+            className={inputCls}
           />
           <input
             value={instagram}
             onChange={(e) => setInstagram(e.target.value)}
             placeholder="Instagram link"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold outline-none focus:border-[#1D6FF2]"
+            className={inputCls}
           />
           <input
             value={facebook}
             onChange={(e) => setFacebook(e.target.value)}
             placeholder="Facebook link"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold outline-none focus:border-[#1D6FF2]"
+            className={inputCls}
           />
           <input
             value={tiktok}
             onChange={(e) => setTiktok(e.target.value)}
             placeholder="TikTok link"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold outline-none focus:border-[#1D6FF2]"
+            className={inputCls}
           />
           <input
             value={linkedin}
             onChange={(e) => setLinkedin(e.target.value)}
-            placeholder="LinkedIn / Telegram link"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold outline-none focus:border-[#1D6FF2]"
+            placeholder="LinkedIn / Telegram"
+            className={inputCls}
           />
         </div>
       </div>
 
-      {/* 5. XARITA (LOKATSIYA) QO'SHASIZMI? (HA / YO'Q) */}
-      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4">
+      {/* 5. XARITA */}
+      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/45">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-1.5 text-[13px] font-extrabold text-[#08123A]">
-              <MapPin className="h-4 w-4 text-[#1D6FF2]" />
+            <p className="flex items-center gap-1.5 text-[13px] font-extrabold text-[#08123A] dark:text-white">
+              <MapPin className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
               Ushbu brend va uning chegirmalari uchun xarita (Map) qo‘shasizmi?
             </p>
-            <p className="text-[11.5px] text-slate-500">
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
               «Yo‘q» desangiz, saytda chegirma ichida xarita ko‘rinmaydi
             </p>
           </div>
 
-          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
             <button
               type="button"
               onClick={() => setHasMap(true)}
               className={cn(
                 'rounded-lg px-4 py-1.5 text-[12px] font-extrabold transition-all',
                 hasMap
-                  ? 'bg-[#002D96] text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-[#08123A]'
+                  ? 'bg-[#002D96] text-white shadow-sm'
+                  : 'text-slate-600 hover:text-[#08123A] dark:text-slate-300'
               )}
             >
               Ha, xarita qo‘shish
@@ -394,8 +504,8 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
               className={cn(
                 'rounded-lg px-4 py-1.5 text-[12px] font-extrabold transition-all',
                 !hasMap
-                  ? 'bg-slate-800 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-[#08123A]'
+                  ? 'bg-slate-800 text-white shadow-sm dark:bg-slate-700'
+                  : 'text-slate-600 hover:text-[#08123A] dark:text-slate-300'
               )}
             >
               Yo‘q (Xaritasiz)
@@ -404,26 +514,26 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
         </div>
 
         {hasMap && (
-          <div className="mt-4 space-y-3 border-t border-slate-200/70 pt-4">
+          <div className="mt-4 space-y-3 border-t border-slate-200/70 pt-4 dark:border-slate-700">
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
               <input
                 value={branchName}
                 onChange={(e) => setBranchName(e.target.value)}
                 placeholder="Filial nomi (masalan: Chilonzor filiali)"
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold outline-none sm:col-span-4"
+                className={cn(inputCls, 'sm:col-span-4')}
               />
               <div className="flex gap-1.5 sm:col-span-5">
                 <input
                   value={branchAddress}
                   onChange={(e) => setBranchAddress(e.target.value)}
                   placeholder="Manzilni yozing (masalan: Amir Temur 15)"
-                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold outline-none"
+                  className={cn(inputCls, 'flex-1')}
                 />
                 <button
                   type="button"
                   onClick={handleFindOnMap}
                   disabled={searchingGeo}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-slate-200/80 px-3 py-2 text-[11.5px] font-bold text-[#08123A] hover:bg-slate-300"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-slate-200/80 px-3 py-2 text-[11.5px] font-bold text-[#08123A] hover:bg-slate-300 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600"
                 >
                   {searchingGeo ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -449,7 +559,7 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
                 <input
                   value={branchLat}
                   onChange={(e) => setBranchLat(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11.5px] font-mono"
+                  className={cn(inputCls, 'py-1 font-mono text-[11.5px]')}
                 />
               </div>
               <div>
@@ -457,13 +567,12 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
                 <input
                   value={branchLng}
                   onChange={(e) => setBranchLng(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11.5px] font-mono"
+                  className={cn(inputCls, 'py-1 font-mono text-[11.5px]')}
                 />
               </div>
             </div>
 
-            {/* Xaritadan jonli ko'rish */}
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700">
               <iframe
                 key={`${branchLat}-${branchLng}`}
                 title="Branch Map Preview"
@@ -477,25 +586,29 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
 
             {locations.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-[11px] font-extrabold text-[#08123A]">
+                <p className="text-[11px] font-extrabold text-[#08123A] dark:text-white">
                   Qo‘shilgan filiallar ({locations.length}):
                 </p>
                 <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {locations.map((loc) => (
                     <li
                       key={loc.id}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px]"
+                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] dark:border-slate-700 dark:bg-slate-800"
                     >
                       <div className="min-w-0">
-                        <p className="truncate font-bold text-[#08123A]">{loc.name}</p>
-                        <p className="truncate text-[11px] text-slate-500">{loc.address}</p>
+                        <p className="truncate font-bold text-[#08123A] dark:text-white">
+                          {loc.name}
+                        </p>
+                        <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                          {loc.address}
+                        </p>
                       </div>
                       <button
                         type="button"
                         onClick={() =>
                           setLocations((prev) => prev.filter((item) => item.id !== loc.id))
                         }
-                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-500"
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-500 dark:bg-rose-950/60 dark:text-rose-400"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -508,9 +621,9 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
         )}
       </div>
 
-      {/* 6. FAQAT KATEGORIYALAR ("Qaysi bo'limlarda ko'rinsin?" olib tashlandi) */}
+      {/* 6. KATEGORIYALAR */}
       <div>
-        <label className="mb-2 block text-[12px] font-extrabold text-[#08123A]">
+        <label className="mb-2 block text-[12px] font-extrabold text-[#08123A] dark:text-white">
           Kategoriyalarni tanlang *
         </label>
         <div className="flex flex-wrap gap-2">
@@ -524,8 +637,8 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[12px] font-bold transition-all',
                   active
-                    ? 'border-[#002D96] bg-[#002D96] text-white shadow-2xs'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    ? 'border-[#002D96] bg-[#002D96] text-white shadow-sm dark:border-sky-400 dark:bg-[#1D6FF2]'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                 )}
               >
                 {active && <Check className="h-3.5 w-3.5" />}
@@ -538,15 +651,20 @@ export default function BrandForm({ initialBrand = null, onSaved, onCancel }) {
 
       <Button
         type="submit"
-        disabled={saving}
-        className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-extrabold text-white shadow-md"
+        disabled={saving || !isDirty}
+        className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-extrabold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-45"
       >
-        <Plus className="mr-1.5 h-4 w-4" />
-        {saving
-          ? 'Saqlanmoqda...'
-          : initialBrand
-            ? 'Brend o‘zgarishlarini saqlash'
-            : 'Brendni yaratish va chegirmalar qo‘shishga o‘tish'}
+        {saving ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Saqlanmoqda...
+          </>
+        ) : (
+          <>
+            <Save className="mr-2 h-4 w-4" />
+            Saqlash
+          </>
+        )}
       </Button>
     </form>
   );
