@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   CheckCircle2,
@@ -58,12 +58,27 @@ export default function VerifyModal({ open, onOpenChange }) {
     phone: false,
   });
 
+  // Formni faqat modal ochilgan (false -> true) paytda 1 marta to'ldiramiz:
+  // fon rejimida profile reload() yoki boshqa maydonlarni to'ldirish viloyat/universitetni o'chirib yubormasligi shart!
+  const wasOpenRef = useRef(false);
+  const userTouchedUniRef = useRef(false);
+
   useEffect(() => {
     api.listUniversities().then((list) => setUniversities(list || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (open && profile) {
+    if (!open) {
+      wasOpenRef.current = false;
+      userTouchedUniRef.current = false;
+      return;
+    }
+
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
+    userTouchedUniRef.current = false;
+
+    if (profile) {
       setFullName(profile.name || '');
       setRegion(profile.region || '');
       setBirthDate(formatBirthDateMask(profile.birth_date || ''));
@@ -94,6 +109,19 @@ export default function VerifyModal({ open, onOpenChange }) {
       }
     }
   }, [open, profile, universities]);
+
+  // Agar universitetlar ro'yxati modal ochilgandan keyin kechikib yuklansa,
+  // faqat foydalanuvchi hali universitetni o'zi o'zgartirmagan bo'lsagina "Boshqa" ni tekshiramiz
+  useEffect(() => {
+    if (!open || userTouchedUniRef.current || universities.length === 0) return;
+    const curUni = profile?.university || '';
+    if (!curUni || curUni.startsWith('Boshqa - ')) return;
+    const uniNames = universities.map((u) => (typeof u === 'string' ? u : u?.name || ''));
+    if (!uniNames.includes(curUni)) {
+      setUniversity('Boshqa');
+      setCustomInstitution(curUni);
+    }
+  }, [open, universities, profile?.university]);
 
   const filteredUniversities = useMemo(() => {
     const norm = (r) =>
@@ -294,6 +322,7 @@ export default function VerifyModal({ open, onOpenChange }) {
           <RegionSelect
             value={region}
             onChange={(val) => {
+              userTouchedUniRef.current = true;
               setRegion(val);
               setUniversity('');
               setCustomInstitution('');
@@ -307,6 +336,7 @@ export default function VerifyModal({ open, onOpenChange }) {
             value={university}
             disabled={!region}
             onChange={(val) => {
+              userTouchedUniRef.current = true;
               setUniversity(val);
               if (val !== 'Boshqa') setCustomInstitution('');
             }}

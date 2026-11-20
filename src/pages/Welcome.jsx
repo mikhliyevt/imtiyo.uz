@@ -29,7 +29,12 @@ import UniversitySelect from '@/components/UniversitySelect';
 import SearchableSelect from '@/components/SearchableSelect';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
-import { OAUTH_PENDING_KEY, OAUTH_RETURN_KEY, useStudent } from '@/lib/StudentContext';
+import {
+  OAUTH_PENDING_KEY,
+  OAUTH_RETURN_KEY,
+  SIGNUP_IN_PROGRESS_KEY,
+  useStudent,
+} from '@/lib/StudentContext';
 import { supabase } from '@/lib/supabase';
 import { api, COURSE_OPTIONS } from '@/services/api';
 import { REGIONS, formatUzPhone, formatBirthDateMask } from '@/lib/formUtils';
@@ -382,12 +387,11 @@ export default function Welcome() {
       }
 
       // ==========================================
-      // TIZIMGA KIRISH (LOGIN)
+      // TIZIMGA KIRISH (LOGIN — HAR DOIM BITTA ASOSIY PROFILGA)
       // ==========================================
       if (method === 'email') {
         const cleanEmail = email.trim().toLowerCase();
-        const all = await api.listProfiles();
-        const found = all.find((p) => p.email && p.email.toLowerCase() === cleanEmail);
+        const found = await api.findProfile({ email: cleanEmail });
 
         const { error: signInErr } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
@@ -399,34 +403,48 @@ export default function Welcome() {
             throw new Error(t('welcome.errBadLogin'));
           }
           const savedPass = localStorage.getItem(`imtiyo_pwd_${cleanEmail}`);
-          if (
-            (found.password && found.password !== password) ||
-            (savedPass && savedPass !== password)
-          ) {
+          const dbPass = found.password || '';
+          const phoneDigits = String(found.phone || '').replace(/\D/g, '').slice(-9);
+          const linkedPhonePass =
+            phoneDigits.length === 9
+              ? localStorage.getItem(`imtiyo_pwd_phone_${phoneDigits}`)
+              : '';
+          const validPasswords = [savedPass, dbPass, linkedPhonePass].filter(Boolean);
+          if (validPasswords.length === 0 || !validPasswords.includes(password)) {
             throw new Error(t('welcome.errBadLogin'));
           }
         }
 
-        await signIn({ provider: 'email', email: cleanEmail });
+        await signIn({
+          id: found?.id || '',
+          provider: found?.provider || 'email',
+          email: found?.email || cleanEmail,
+          phone: found?.phone || '',
+        });
         navigate(returnTo);
       } else {
         const cleanPhone = `+998 ${formatUzPhone(phone)}`;
         const digits = phone.replace(/\D/g, '').slice(-9);
-        const all = await api.listProfiles();
-        const found = all.find(
-          (p) => p.phone && p.phone.replace(/\D/g, '').endsWith(digits)
-        );
+        const found = await api.findProfile({ phone: cleanPhone });
         if (!found) throw new Error(t('welcome.errPhoneNotFound'));
 
-        const savedPass = localStorage.getItem(`imtiyo_pwd_phone_${digits}`);
-        if (
-          (found.password && found.password !== password) ||
-          (savedPass && savedPass !== password)
-        ) {
+        const savedPhonePass = localStorage.getItem(`imtiyo_pwd_phone_${digits}`);
+        const linkedEmail = String(found.email || '').trim().toLowerCase();
+        const linkedEmailPass = linkedEmail
+          ? localStorage.getItem(`imtiyo_pwd_${linkedEmail}`)
+          : '';
+        const dbPass = found.password || '';
+        const validPasswords = [savedPhonePass, dbPass, linkedEmailPass].filter(Boolean);
+        if (validPasswords.length === 0 || !validPasswords.includes(password)) {
           throw new Error(t('welcome.errBadPhoneLogin'));
         }
 
-        await signIn({ provider: 'phone', phone: cleanPhone });
+        await signIn({
+          id: found.id,
+          provider: found.provider || 'phone',
+          email: found.email || '',
+          phone: found.phone || cleanPhone,
+        });
         navigate(returnTo);
       }
     } catch (err) {
@@ -443,11 +461,17 @@ export default function Welcome() {
         const cleanEmail = email.trim().toLowerCase();
         const isValid = await api.verifyEmailOtpCode(cleanEmail, enteredCode);
         if (!isValid) {
-          throw new Error('Tasdiqlash kodi noto‘g‘ri yoki muddati tugagan');
+          throw new Error(t('welcome.errBadCode'));
         }
 
-        await supabase.auth.signUp({ email: cleanEmail, password }).catch(() => { });
-        await supabase.auth.updateUser({ password }).catch(() => { });
+        // Anketa to'ldirilguncha StudentContext bo'sh dublikat profil yaratmasligi uchun bayroq qo'yamiz
+        try {
+          sessionStorage.setItem(SIGNUP_IN_PROGRESS_KEY, '1');
+        } catch {
+          /* ignore */
+        }
+        await supabase.auth.signUp({ email: cleanEmail, password }).catch(() => {});
+        await supabase.auth.updateUser({ password }).catch(() => {});
         localStorage.setItem(`imtiyo_pwd_${cleanEmail}`, password);
         localStorage.setItem(`imtiyo_verified_${cleanEmail}`, 'true');
       } else {
@@ -548,6 +572,12 @@ export default function Welcome() {
         }
       }
 
+      try {
+        sessionStorage.removeItem(SIGNUP_IN_PROGRESS_KEY);
+      } catch {
+        /* ignore */
+      }
+
       const created = await signIn({
         provider: method,
         email: method === 'email' ? email.trim().toLowerCase() : '',
@@ -562,6 +592,10 @@ export default function Welcome() {
       });
 
       if (created?.id) {
+        // Telefon va email uchun parolni bir-biriga ham sinxron saqlab qo'yamiz
+        if (method === 'email' && finalPhoneDigits.length === 9) {
+          localStorage.setItem(`imtiyo_pwd_phone_${finalPhoneDigits}`, password);
+        }
         await updateProfile({
           name: fullNameCombined,
           full_name: fullNameCombined,
@@ -590,13 +624,18 @@ export default function Welcome() {
     resetMessages();
 
     if (method === 'email') {
-      if (!email.includes('@')) {
-        setError('Parolni tiklash uchun email manzilingizni kiriting');
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail.includes('@')) {
+        setError(t('welcome.errEmail'));
         return;
       }
       setBusy(true);
       try {
-        await api.sendEmailOtpViaResend(email.trim().toLowerCase());
+        const found = await api.findProfile({ email: cleanEmail });
+        if (!found) {
+          throw new Error(t('welcome.errEmailNotFound'));
+        }
+        await api.sendEmailOtpViaResend(cleanEmail);
         setInfo('Parolni tiklash kodi emailingizga yuborildi.');
         setForgotStep('verify_reset');
       } catch (err) {
@@ -608,18 +647,14 @@ export default function Welcome() {
     }
 
     if (phone.replace(/\D/g, '').length !== 9) {
-      setError('+998 99 999 99 99 formatida 9 ta raqam kiriting');
+      setError(t('welcome.errPhone'));
       return;
     }
 
     setBusy(true);
     try {
-      const digits = phone.replace(/\D/g, '').slice(-9);
-      const all = await api.listProfiles();
-      const found = all.find(
-        (p) => p.phone && p.phone.replace(/\D/g, '').endsWith(digits)
-      );
-      if (!found) throw new Error('Bunday telefon raqam bazada topilmadi');
+      const found = await api.findProfile({ phone });
+      if (!found) throw new Error(t('welcome.errPhoneNotFound'));
       const tgSession = await api.initTelegramOtpSession(phone, true);
       setTgDeepLink(tgSession.deepLink);
       setTgBotUsername(tgSession.botUsername);
@@ -635,26 +670,70 @@ export default function Welcome() {
     e.preventDefault();
     resetMessages();
     if (newPassword.length < 6) {
-      setError('Yangi parol kamida 6 ta belgidan iborat bo‘lishi kerak');
+      setError(t('welcome.errPassMin'));
       return;
     }
     setBusy(true);
     try {
+      let targetProfile = null;
       if (method === 'email') {
         const cleanEmail = email.trim().toLowerCase();
         const ok = await api.verifyEmailOtpCode(cleanEmail, enteredCode);
-        if (!ok) throw new Error('Tasdiqlash kodi noto‘g‘ri');
+        if (!ok) throw new Error(t('welcome.errBadCode'));
+
+        targetProfile = await api.findProfile({ email: cleanEmail });
+        if (!targetProfile) throw new Error(t('welcome.errEmailNotFound'));
+
         localStorage.setItem(`imtiyo_pwd_${cleanEmail}`, newPassword);
-        await signIn({ provider: 'email', email: cleanEmail });
+        const targetPhoneDigits = String(targetProfile.phone || '').replace(/\D/g, '').slice(-9);
+        if (targetPhoneDigits.length === 9) {
+          localStorage.setItem(`imtiyo_pwd_phone_${targetPhoneDigits}`, newPassword);
+        }
+        await api.saveProfile(targetProfile.id, { password: newPassword }).catch(() => {});
+
+        // Agar Supabase Authda shu email sessiyasi ochiq bo'lsa, parolini ham sinxron yangilash
+        try {
+          const { data: sData } = await supabase.auth.getSession();
+          const sEmail = String(sData?.session?.user?.email || '').trim().toLowerCase();
+          if (sEmail === cleanEmail) {
+            await supabase.auth.updateUser({ password: newPassword }).catch(() => {});
+          } else if (sEmail) {
+            await supabase.auth.signOut().catch(() => {});
+          }
+        } catch {
+          /* ignore */
+        }
+
+        await signIn({
+          id: targetProfile.id,
+          provider: targetProfile.provider || 'email',
+          email: targetProfile.email || cleanEmail,
+          phone: targetProfile.phone || '',
+        });
       } else {
         const digits = phone.replace(/\D/g, '').slice(-9);
         const ok = await api.verifyPhoneOtpCode(phone, enteredCode);
-        if (!ok) throw new Error('Tasdiqlash kodi noto‘g‘ri');
+        if (!ok) throw new Error(t('welcome.errBadCode'));
+
+        targetProfile = await api.findProfile({ phone });
+        if (!targetProfile) throw new Error(t('welcome.errPhoneNotFound'));
+
         localStorage.setItem(`imtiyo_pwd_phone_${digits}`, newPassword);
-        await signIn({ provider: 'phone', phone: `+998 ${formatUzPhone(phone)}` });
+        const targetEmail = String(targetProfile.email || '').trim().toLowerCase();
+        if (targetEmail) {
+          localStorage.setItem(`imtiyo_pwd_${targetEmail}`, newPassword);
+        }
+        await api.saveProfile(targetProfile.id, { password: newPassword }).catch(() => {});
+
+        await signIn({
+          id: targetProfile.id,
+          provider: targetProfile.provider || 'phone',
+          email: targetProfile.email || '',
+          phone: targetProfile.phone || `+998 ${formatUzPhone(phone)}`,
+        });
       }
-      setInfo('Parolingiz muvaffaqiyatli yangilandi!');
-      setTimeout(() => navigate('/'), 800);
+      setInfo(t('welcome.errPasswordUpdated'));
+      setTimeout(() => navigate('/profile', { replace: true }), 700);
     } catch (err) {
       setError(err.message || 'Xatolik yuz berdi');
     } finally {
@@ -663,6 +742,11 @@ export default function Welcome() {
   };
 
   const switchAuthMode = (nextMode) => {
+    try {
+      sessionStorage.removeItem(SIGNUP_IN_PROGRESS_KEY);
+    } catch {
+      /* ignore */
+    }
     setMode(nextMode);
     setStep('form');
     resetMessages();

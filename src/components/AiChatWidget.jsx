@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Bot, MessageSquareText, Send, Sparkles, X } from 'lucide-react';
 import { useLang } from '@/lib/LanguageContext';
 import { cn } from '@/lib/utils';
 
 export default function AiChatWidget() {
+  const location = useLocation();
   const { t, lang } = useLang();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(() => [
@@ -12,6 +14,8 @@ export default function AiChatWidget() {
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef(null);
+
+  const isAdminRoute = String(location?.pathname || '').startsWith('/admin');
 
   const quickPrompts = [t('ai.q1'), t('ai.q2'), t('ai.q3')];
 
@@ -75,6 +79,8 @@ export default function AiChatWidget() {
     e.preventDefault();
     sendMessage(input);
   };
+
+  if (isAdminRoute) return null;
 
   return (
     <div className="fixed right-5 bottom-5 z-50 hidden md:block">

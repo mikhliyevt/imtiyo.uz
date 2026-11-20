@@ -379,13 +379,15 @@ export default function Admin() {
   const [msgDrafts, setMsgDrafts] = useState({});
   const [savingMsgId, setSavingMsgId] = useState(null);
 
-  // Admin bildirishnomalar yuborish (registered | guest | all)
+  // Admin bildirishnomalar yuborish (registered | guest | all | user)
   const [broadcastNotifications, setBroadcastNotifications] = useState([]);
   const [notifTitle, setNotifTitle] = useState('');
   const [notifMessage, setNotifMessage] = useState('');
   const [notifAudience, setNotifAudience] = useState('all');
   const [notifTone, setNotifTone] = useState('info');
   const [notifFilterAudience, setNotifFilterAudience] = useState('all');
+  const [notifStudentSearch, setNotifStudentSearch] = useState('');
+  const [selectedNotifStudent, setSelectedNotifStudent] = useState(null);
   const [sendingNotif, setSendingNotif] = useState(false);
 
   // Unsaved changes confirmation modal state
@@ -1179,9 +1181,37 @@ export default function Admin() {
     toast({ title: 'Xabar o‘chirildi' });
   };
 
+  const notifMatchedStudents = useMemo(() => {
+    const rawQ = notifStudentSearch.trim().toLowerCase().replace(/^#/, '');
+    if (!rawQ) return profiles.slice(0, 8);
+    return profiles
+      .filter((p) => {
+        if (!p) return false;
+        const sid = String(p.student_id || '').toLowerCase();
+        const name = String(p.name || p.full_name || '').toLowerCase();
+        const email = String(p.email || '').toLowerCase();
+        const phone = String(p.phone || '').toLowerCase();
+        return (
+          sid.includes(rawQ) ||
+          name.includes(rawQ) ||
+          email.includes(rawQ) ||
+          phone.includes(rawQ)
+        );
+      })
+      .slice(0, 12);
+  }, [profiles, notifStudentSearch]);
+
   const handleSendBroadcastNotification = async (e) => {
     e.preventDefault();
     if (!notifTitle.trim() || !notifMessage.trim()) return;
+    if (notifAudience === 'user' && !selectedNotifStudent) {
+      toast({
+        title: 'Talabani tanlang',
+        description: 'Talaba ID raqamini yozib ro‘yxatdan kerakli foydalanuvchini tanlang.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSendingNotif(true);
     try {
       await api.createBroadcastNotification({
@@ -1189,20 +1219,33 @@ export default function Admin() {
         message: notifMessage.trim(),
         audience: notifAudience,
         tone: notifTone,
+        target_student_id: notifAudience === 'user' ? selectedNotifStudent.student_id : '',
+        target_profile_id: notifAudience === 'user' ? selectedNotifStudent.id : '',
+        target_name: notifAudience === 'user' ? selectedNotifStudent.name : '',
       });
       const fresh = await api.listBroadcastNotifications();
       setBroadcastNotifications(Array.isArray(fresh) ? fresh : []);
       setNotifTitle('');
       setNotifMessage('');
-      toast({
-        title: 'Bildirishnoma yuborildi!',
-        description:
-          notifAudience === 'registered'
-            ? 'Login qilgan barcha foydalanuvchilarga yetkazildi.'
-            : notifAudience === 'guest'
-              ? 'Yangi foydalanuvchilar (mehmonlar) uchun faollashtirildi.'
-              : 'Barcha foydalanuvchilarga (login qilgan va yangi) yetkazildi.',
-      });
+      if (notifAudience === 'user') {
+        const targetLabel = `${selectedNotifStudent.name} (#${selectedNotifStudent.student_id})`;
+        setSelectedNotifStudent(null);
+        setNotifStudentSearch('');
+        toast({
+          title: 'Shaxsiy bildirishnoma yuborildi!',
+          description: `${targetLabel} foydalanuvchisining bildirishnoma oynasiga yetkazildi.`,
+        });
+      } else {
+        toast({
+          title: 'Bildirishnoma yuborildi!',
+          description:
+            notifAudience === 'registered'
+              ? 'Login qilgan barcha foydalanuvchilarga yetkazildi.'
+              : notifAudience === 'guest'
+                ? 'Yangi foydalanuvchilar (mehmonlar) uchun faollashtirildi.'
+                : 'Barcha foydalanuvchilarga (login qilgan va yangi) yetkazildi.',
+        });
+      }
     } catch {
       toast({ title: 'Bildirishnoma yuborishda xatolik', variant: 'destructive' });
     } finally {
@@ -2915,11 +2958,22 @@ export default function Admin() {
                         title: 'Ikkalasiga ham (Barcha foydalanuvchilar)',
                         desc: 'Ham login qilganlarga, ham yangi foydalanuvchilarga ko‘rinadi',
                       },
+                      {
+                        id: 'user',
+                        title: 'Aniq talabaga (Talaba ID orqali)',
+                        desc: 'ID raqami orqali qidirib, faqat o‘sha foydalanuvchiga shaxsiy xabar yuborish',
+                      },
                     ].map((aud) => (
                       <button
                         key={aud.id}
                         type="button"
-                        onClick={() => setNotifAudience(aud.id)}
+                        onClick={() => {
+                          setNotifAudience(aud.id);
+                          if (aud.id !== 'user') {
+                            setSelectedNotifStudent(null);
+                            setNotifStudentSearch('');
+                          }
+                        }}
                         className={cn(
                           'flex items-start gap-2.5 rounded-2xl border p-3 text-left transition-all',
                           notifAudience === aud.id
@@ -2949,6 +3003,86 @@ export default function Admin() {
                     ))}
                   </div>
                 </div>
+
+                {/* ANIQ TALABANI ID ORQALI QIDIRISH VA TANLASH */}
+                {notifAudience === 'user' && (
+                  <div className="space-y-2.5 rounded-2xl border border-[#1D6FF2]/30 bg-[#1D6FF2]/[0.05] p-3.5 dark:border-sky-500/30 dark:bg-sky-500/10">
+                    <label className="block text-[11px] font-extrabold text-[#002D96] dark:text-sky-300">
+                      Talaba ID raqamini yozing va tanlang *
+                    </label>
+
+                    {selectedNotifStudent ? (
+                      <div className="flex items-center justify-between gap-2.5 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 shadow-xs dark:border-emerald-500/35 dark:bg-slate-900">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate text-[13px] font-extrabold text-[#08123A] dark:text-white">
+                              {selectedNotifStudent.name}
+                            </p>
+                            <span className="shrink-0 rounded-full bg-[#002D96]/10 px-2 py-0.5 font-mono text-[10.5px] font-extrabold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
+                              #{selectedNotifStudent.student_id}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                            {selectedNotifStudent.university ||
+                              selectedNotifStudent.email ||
+                              selectedNotifStudent.phone ||
+                              'Talaba'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedNotifStudent(null)}
+                          title="Boshqa talaba tanlash"
+                          className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-500 dark:bg-slate-800 dark:text-slate-300"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#1D6FF2] dark:text-sky-400" />
+                          <input
+                            type="text"
+                            value={notifStudentSearch}
+                            onChange={(e) => setNotifStudentSearch(e.target.value)}
+                            placeholder="Masalan: 482910 yoki ism familiya..."
+                            className={cn(inputCls, 'w-full pl-9 py-2')}
+                          />
+                        </div>
+
+                        <div className="max-h-48 space-y-1 overflow-y-auto pr-0.5">
+                          {notifMatchedStudents.length === 0 ? (
+                            <p className="py-3 text-center text-[11.5px] font-semibold text-slate-500 dark:text-slate-400">
+                              Bunday ID yoki ismli talaba topilmadi
+                            </p>
+                          ) : (
+                            notifMatchedStudents.map((stu) => (
+                              <button
+                                key={stu.id}
+                                type="button"
+                                onClick={() => setSelectedNotifStudent(stu)}
+                                className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-left transition-colors hover:border-[#1D6FF2] hover:bg-[#1D6FF2]/[0.04] dark:border-slate-700 dark:bg-slate-900 dark:hover:border-sky-400"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-[12.5px] font-extrabold text-[#08123A] dark:text-white">
+                                    {stu.name || 'Talaba'}
+                                  </p>
+                                  <p className="truncate text-[10.5px] text-slate-500 dark:text-slate-400">
+                                    {stu.email || stu.phone || stu.university || '—'}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-[#002D96]/10 px-2.5 py-0.5 font-mono text-[11px] font-extrabold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
+                                  #{stu.student_id}
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -3010,7 +3144,12 @@ export default function Admin() {
 
                 <Button
                   type="submit"
-                  disabled={sendingNotif || !notifTitle.trim() || !notifMessage.trim()}
+                  disabled={
+                    sendingNotif ||
+                    !notifTitle.trim() ||
+                    !notifMessage.trim() ||
+                    (notifAudience === 'user' && !selectedNotifStudent)
+                  }
                   className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {sendingNotif ? (
@@ -3037,6 +3176,7 @@ export default function Admin() {
                   <div className="flex flex-wrap gap-1">
                     {[
                       { id: 'all', label: 'Barchasi' },
+                      { id: 'user', label: 'Shaxsiy (ID)' },
                       { id: 'registered', label: 'Login qilganlar' },
                       { id: 'guest', label: 'Yangi userlar' },
                     ].map((f) => (
@@ -3068,20 +3208,25 @@ export default function Admin() {
                   <ul className="space-y-2.5">
                     {filteredBroadcastNotifications.map((n) => {
                       const audBadge =
-                        n.audience === 'registered'
+                        n.audience === 'user'
                           ? {
-                              label: 'Login qilganlar',
-                              cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+                              label: `Shaxsiy · ${n.target_name || 'Talaba'} (#${n.target_student_id || '—'})`,
+                              cls: 'bg-violet-50 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300',
                             }
-                          : n.audience === 'guest'
+                          : n.audience === 'registered'
                             ? {
-                                label: 'Yangi foydalanuvchilar',
-                                cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                                label: 'Login qilganlar',
+                                cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
                               }
-                            : {
-                                label: 'Ikkalasiga ham (Barchaga)',
-                                cls: 'bg-[#1D6FF2]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300',
-                              };
+                            : n.audience === 'guest'
+                              ? {
+                                  label: 'Yangi foydalanuvchilar',
+                                  cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                                }
+                              : {
+                                  label: 'Ikkalasiga ham (Barchaga)',
+                                  cls: 'bg-[#1D6FF2]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300',
+                                };
 
                       return (
                         <li

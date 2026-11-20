@@ -1226,49 +1226,224 @@ export const api = {
     return mapProfile(DEMO_STUDENT);
   },
 
+  // Deterministik asosiy profil tanlovchi: bir xil email/telefon bilan bir nechta
+  // eski dublikat yozuvlar bo'lsa ham, HAR DOIM bitta ayni asosiy profilni qaytaradi
+  // (last_login yoki Postgres heap tartibiga bog'liq bo'lmaydi!)
+  pickPrimaryProfile(rows = []) {
+    const valid = (Array.isArray(rows) ? rows : []).filter(Boolean);
+    if (valid.length === 0) return null;
+    if (valid.length === 1) return mapProfile(valid[0]);
+
+    const statusScore = (s) => {
+      if (s === 'verified') return 1000;
+      if (s === 'pending') return 500;
+      if (s === 'rejected') return 200;
+      return 0;
+    };
+
+    const scoreRow = (r) => {
+      const m = mapProfile(r);
+      let score = statusScore(m.status);
+      const nameVal = String(m.full_name || m.name || '').trim();
+      if (nameVal && nameVal.toLowerCase() !== 'talaba') score += 50;
+      if (m.university) score += 40;
+      if (m.document_url) score += 35;
+      if (m.phone) score += 30;
+      if (m.region) score += 20;
+      if (m.birth_date) score += 20;
+      if (m.course) score += 15;
+      if (m.gender) score += 10;
+      if (m.avatar_url) score += 10;
+      if (m.email) score += 10;
+      return score;
+    };
+
+    const sorted = [...valid].sort((a, b) => {
+      const diff = scoreRow(b) - scoreRow(a);
+      if (diff !== 0) return diff;
+      // Teng bo'lsa — eng eski (birinchi ochilgan) profil ustun
+      const timeA = new Date(a.created_at || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      const timeB = new Date(b.created_at || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      if (timeA !== timeB) return timeA - timeB;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+
+    const primary = mapProfile(sorted[0]);
+
+    // Agar eski dublikatlarda asosiy profilda bo'sh qolgan maydonlar bo'lsa (email/phone/password),
+    // ularni yo'qotmasdan asosiy profilga birlashtirib berish
+    const merged = { ...primary };
+    for (let i = 1; i < sorted.length; i += 1) {
+      const dup = mapProfile(sorted[i]);
+      if (!merged.email && dup.email) merged.email = dup.email;
+      if (!merged.phone && dup.phone) merged.phone = dup.phone;
+      if (!merged.university && dup.university) merged.university = dup.university;
+      if (!merged.region && dup.region) merged.region = dup.region;
+      if (!merged.course && dup.course) merged.course = dup.course;
+      if (!merged.birth_date && dup.birth_date) merged.birth_date = dup.birth_date;
+      if (!merged.gender && dup.gender) merged.gender = dup.gender;
+      if (!merged.avatar_url && dup.avatar_url) merged.avatar_url = dup.avatar_url;
+      if (!merged.password && dup.password) merged.password = dup.password;
+      if ((!merged.full_name || merged.full_name === 'Talaba') && dup.full_name && dup.full_name !== 'Talaba') {
+        merged.full_name = dup.full_name;
+        merged.name = dup.full_name;
+      }
+    }
+
+    return merged;
+  },
+
   async findProfile({ id = '', email = '', phone = '' } = {}) {
     const cleanEmail = String(email || '').trim().toLowerCase();
     const digits = String(phone || '').replace(/\D/g, '').slice(-9);
+    const localList = readLocal(STORAGE_KEYS.LOCAL_PROFILES, []);
+
+    const candidatesMap = new Map();
+    const addCandidate = (row) => {
+      if (row && row.id) {
+        const key = String(row.id);
+        if (!candidatesMap.has(key)) candidatesMap.set(key, row);
+      }
+    };
+
+    const fetchByEmail = async (em) => {
+      const normalized = String(em || '').trim().toLowerCase();
+      if (!normalized) return;
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('email', normalized)
+          .order('created_at', { ascending: true })
+          .limit(25);
+        if (Array.isArray(data)) {
+          data.forEach((row) => {
+            if (row && String(row.email || '').trim().toLowerCase() === normalized) {
+              addCandidate(row);
+            }
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+      if (Array.isArray(localList)) {
+        localList.forEach((row) => {
+          if (row && String(row.email || '').trim().toLowerCase() === normalized) {
+            addCandidate(row);
+          }
+        });
+      }
+    };
+
+    const fetchByPhoneDigits = async (phDigits) => {
+      const d = String(phDigits || '').replace(/\D/g, '').slice(-9);
+      if (d.length !== 9) return;
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('phone', `%${d.slice(-4)}`)
+          .order('created_at', { ascending: true })
+          .limit(25);
+        if (Array.isArray(data)) {
+          data.forEach((row) => {
+            if (row?.phone && row.phone.replace(/\D/g, '').slice(-9) === d) {
+              addCandidate(row);
+            }
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+      if (Array.isArray(localList)) {
+        localList.forEach((row) => {
+          if (row?.phone && row.phone.replace(/\D/g, '').slice(-9) === d) {
+            addCandidate(row);
+          }
+        });
+      }
+    };
 
     try {
-      if (id) {
+      // 1. Aniq ID berilgan bo'lsa — avval shu ID bo'yicha olish (reload() tez ishlashi uchun)
+      if (id && !cleanEmail && digits.length !== 9) {
         const { data } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', id)
           .maybeSingle();
         if (data) return mapProfile(data);
-      }
-      if (cleanEmail) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .ilike('email', cleanEmail)
-          .limit(1)
-          .maybeSingle();
-        if (data) return mapProfile(data);
-      }
-      if (digits.length === 9) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .ilike('phone', `%${digits.slice(-4)}`)
-          .limit(20);
-        if (Array.isArray(data)) {
-          const hit = data.find(
-            (p) => p.phone && p.phone.replace(/\D/g, '').slice(-9) === digits
-          );
-          if (hit) return mapProfile(hit);
+        if (Array.isArray(localList)) {
+          const localById = localList.find((p) => p && String(p.id) === String(id));
+          if (localById) return mapProfile(localById);
         }
+      }
+
+      if (id) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) addCandidate(data);
+        if (Array.isArray(localList)) {
+          const localById = localList.find((p) => p && String(p.id) === String(id));
+          if (localById) addCandidate(localById);
+        }
+      }
+
+      // 2. Email va telefon bo'yicha barcha mos yozuvlarni yig'ish
+      await Promise.all([
+        cleanEmail ? fetchByEmail(cleanEmail) : Promise.resolve(),
+        digits.length === 9 ? fetchByPhoneDigits(digits) : Promise.resolve(),
+      ]);
+
+      // 3. Tranzitiv bog'lanish (1 qadam): email orqali topilgan profildagi telefon raqam
+      // yoki telefon orqali topilgan profildagi email orqali ham bir odamning barcha yozuvlarini topish!
+      const queriedEmails = new Set(cleanEmail ? [cleanEmail] : []);
+      const queriedPhones = new Set(digits.length === 9 ? [digits] : []);
+      const extraTasks = [];
+
+      candidatesMap.forEach((row) => {
+        const rowEmail = String(row.email || '').trim().toLowerCase();
+        const rowPhoneDigits = String(row.phone || '').replace(/\D/g, '').slice(-9);
+        if (rowEmail && !queriedEmails.has(rowEmail)) {
+          queriedEmails.add(rowEmail);
+          extraTasks.push(fetchByEmail(rowEmail));
+        }
+        if (rowPhoneDigits.length === 9 && !queriedPhones.has(rowPhoneDigits)) {
+          queriedPhones.add(rowPhoneDigits);
+          extraTasks.push(fetchByPhoneDigits(rowPhoneDigits));
+        }
+      });
+
+      if (extraTasks.length > 0) {
+        await Promise.all(extraTasks);
+      }
+
+      if (candidatesMap.size > 0) {
+        const allRows = Array.from(candidatesMap.values());
+        const primary = this.pickPrimaryProfile(allRows);
+        // Agar primary yozuvda yo'q bo'lgan email/phone boshqa dublikatdan birlashtirilgan bo'lsa,
+        // bazadagi primary qatorga ham saqlab qo'yish (keyingi safar darhol topiladi)
+        const rawPrimary = allRows.find((r) => String(r.id) === String(primary.id));
+        if (rawPrimary && primary?.id) {
+          const syncBack = {};
+          if (!rawPrimary.email && primary.email) syncBack.email = primary.email;
+          if (!rawPrimary.phone && primary.phone) syncBack.phone = primary.phone;
+          if (Object.keys(syncBack).length > 0) {
+            this.saveProfile(primary.id, syncBack).catch(() => {});
+          }
+        }
+        return primary;
       }
     } catch {
       /* fallback to local cache */
     }
 
-    // Fallback: lokal profillar keshidan qidirish (offline / demo rejimda ham ishlaydi)
-    const localList = readLocal(STORAGE_KEYS.LOCAL_PROFILES, []);
+    // Fallback: lokal profillar keshidan qidirish
     if (Array.isArray(localList) && localList.length > 0) {
-      const hit = localList.find((p) => {
+      const hits = localList.filter((p) => {
         if (!p) return false;
         if (id && String(p.id) === String(id)) return true;
         if (cleanEmail && String(p.email || '').trim().toLowerCase() === cleanEmail) return true;
@@ -1277,7 +1452,7 @@ export const api = {
         }
         return false;
       });
-      if (hit) return mapProfile(hit);
+      if (hits.length > 0) return this.pickPrimaryProfile(hits);
     }
     return null;
   },
@@ -1295,14 +1470,28 @@ export const api = {
   },
 
   async createProfile(data) {
+    const cleanEmail = String(data.email || '').trim().toLowerCase();
+    const cleanPhone = String(data.phone || '').trim();
+
+    // Takroriy (dublikat) profil yaratilishidan yakuniy himoya
+    if (cleanEmail || cleanPhone.replace(/\D/g, '').length >= 9) {
+      const alreadyExists = await this.findProfile({
+        email: cleanEmail,
+        phone: cleanPhone,
+      }).catch(() => null);
+      if (alreadyExists) {
+        return alreadyExists;
+      }
+    }
+
     const now = new Date().toISOString();
     const courseStr = normalizeCourse(data.course);
     const id = 'stu-' + Date.now();
     const record = {
       id,
       full_name: data.full_name || data.name || 'Talaba',
-      email: data.email || '',
-      phone: data.phone || '',
+      email: cleanEmail,
+      phone: cleanPhone,
       university: data.university || '',
       course: courseStr ? Number(courseStr) : null,
       gender: data.gender || '',
@@ -1452,8 +1641,10 @@ export const api = {
         .maybeSingle();
       if (!err1 && retry1) return mapProfile(retry1);
 
-      // Second retry without `course` column in case migration isn't run yet
+      // Second retry without optional columns (`course`, `password`, `email_verified`)
       delete safePayload.course;
+      delete safePayload.password;
+      delete safePayload.email_verified;
       const { data: retry2, error: err2 } = await supabase
         .from('profiles')
         .update(safePayload)
@@ -1899,9 +2090,35 @@ export const api = {
     return true;
   },
 
-  // --- ADMIN BROADCAST NOTIFICATIONS (registered | guest | all) ---
+  // --- ADMIN BROADCAST & DIRECT USER NOTIFICATIONS (registered | guest | all | user) ---
+  normalizeBroadcastNotification(n) {
+    if (!n || typeof n !== 'object') return null;
+    const rawAud = String(n.audience || 'all');
+    if (rawAud.startsWith('user:')) {
+      // Fallback format: user:<student_id>|<profile_id>|<name> (when DB target_* columns not yet added)
+      const rest = rawAud.slice(5);
+      const [sid = '', pid = '', tName = ''] = rest.split('|');
+      return {
+        ...n,
+        audience: 'user',
+        target_student_id: n.target_student_id || sid,
+        target_profile_id: n.target_profile_id || pid,
+        target_name: n.target_name || tName,
+      };
+    }
+    return {
+      ...n,
+      audience: ['registered', 'guest', 'all', 'user'].includes(rawAud) ? rawAud : 'all',
+      target_student_id: n.target_student_id || '',
+      target_profile_id: n.target_profile_id || '',
+      target_name: n.target_name || '',
+    };
+  },
+
   async listBroadcastNotifications() {
-    const localList = readLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, []);
+    const localList = readLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, []).map((n) =>
+      this.normalizeBroadcastNotification(n)
+    ).filter(Boolean);
     try {
       const { data, error } = await supabase
         .from('broadcast_notifications')
@@ -1909,8 +2126,11 @@ export const api = {
         .order('created_at', { ascending: false });
       if (!error && Array.isArray(data)) {
         const mergedMap = new Map();
-        data.forEach((n) => mergedMap.set(n.id, n));
-        (Array.isArray(localList) ? localList : []).forEach((n) => {
+        data.forEach((raw) => {
+          const n = this.normalizeBroadcastNotification(raw);
+          if (n?.id) mergedMap.set(n.id, n);
+        });
+        localList.forEach((n) => {
           if (n?.id && !mergedMap.has(n.id)) mergedMap.set(n.id, n);
         });
         const merged = Array.from(mergedMap.values()).sort(
@@ -1922,17 +2142,31 @@ export const api = {
     } catch {
       /* fallback */
     }
-    return Array.isArray(localList) ? localList : [];
+    return localList;
   },
 
-  async createBroadcastNotification({ title, message, audience = 'all', tone = 'info' }) {
+  async createBroadcastNotification({
+    title,
+    message,
+    audience = 'all',
+    tone = 'info',
+    target_student_id = '',
+    target_profile_id = '',
+    target_name = '',
+  }) {
     const session = this.getAdminSession();
+    const cleanAudience = ['registered', 'guest', 'all', 'user'].includes(audience)
+      ? audience
+      : 'all';
     const record = {
       id: 'notif-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
       title: String(title || '').trim(),
       message: String(message || '').trim(),
-      audience: ['registered', 'guest', 'all'].includes(audience) ? audience : 'all',
+      audience: cleanAudience,
       tone: ['info', 'promo', 'alert'].includes(tone) ? tone : 'info',
+      target_student_id: cleanAudience === 'user' ? String(target_student_id || '').trim() : '',
+      target_profile_id: cleanAudience === 'user' ? String(target_profile_id || '').trim() : '',
+      target_name: cleanAudience === 'user' ? String(target_name || '').trim() : '',
       sent_by: session?.name || 'Admin',
       created_at: new Date().toISOString(),
     };
@@ -1944,7 +2178,20 @@ export const api = {
     ]);
 
     try {
-      await supabase.from('broadcast_notifications').insert(record);
+      const { error } = await supabase.from('broadcast_notifications').insert(record);
+      if (error && cleanAudience === 'user') {
+        // Fallback if target_* columns have not been added in Supabase yet: encode in `audience` text column
+        const compactPayload = {
+          id: record.id,
+          title: record.title,
+          message: record.message,
+          audience: `user:${record.target_student_id}|${record.target_profile_id}|${record.target_name}`,
+          tone: record.tone,
+          sent_by: record.sent_by,
+          created_at: record.created_at,
+        };
+        await supabase.from('broadcast_notifications').insert(compactPayload);
+      }
     } catch {
       /* fallback kept in localStorage */
     }

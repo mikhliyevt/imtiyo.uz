@@ -8,6 +8,7 @@ const LOCAL_PROFILE_KEY = 'imtiyo_student_profile_v2';
 const PROFILE_REVIEWS_KEY = 'imtiyo_profile_reviews_v1';
 export const OAUTH_PENDING_KEY = 'imtiyo_oauth_pending_v1';
 export const OAUTH_RETURN_KEY = 'imtiyo_oauth_return_to_v1';
+export const SIGNUP_IN_PROGRESS_KEY = 'imtiyo_signup_in_progress_v1';
 
 const DEFAULT_GUEST_PROFILE = {
   id: '',
@@ -124,74 +125,112 @@ export function StudentProvider({ children }) {
   });
 
   const syncInFlightRef = useRef(null);
+  const signInInFlightRef = useRef(null);
   const codeExchangedRef = useRef(false);
 
   const signIn = useCallback(async (payload = {}) => {
     const cleanEmail = String(payload.email || '').trim().toLowerCase();
+    const cleanPhone = String(payload.phone || '').trim();
+    const cleanId = String(payload.id || '').trim();
     const cleanCourse = normalizeCourse(payload.course);
+    const lockKey = cleanId || cleanEmail || cleanPhone.replace(/\D/g, '').slice(-9) || 'anon';
 
-    let existing = await api
-      .findProfile({ email: cleanEmail, phone: payload.phone || '' })
-      .catch(() => null);
-
-    const isExistingAccount = Boolean(existing);
-
-    if (!existing) {
-      existing = await api.createProfile({
-        full_name: payload.name || payload.full_name || 'Talaba',
-        email: cleanEmail,
-        phone: payload.phone || '',
-        university: payload.university || '',
-        course: cleanCourse,
-        gender: payload.gender || '',
-        birth_date: payload.birth_date || '',
-        region: payload.region || '',
-        avatar_url: payload.avatar_url || '',
-        provider: payload.provider || 'email',
-        student_id: generateNumericId(),
-        status: 'unverified',
-      });
-    } else if (existing.id) {
-      // Mavjud akkauntga (masalan avval email bilan kirgan, endi Google bilan kirgan)
-      // to'g'ridan-to'g'ri ulanish va faqat bo'sh qolgan maydonlarni to'ldirish
-      const fillPatch = { last_login: new Date().toISOString() };
-      if (!existing.avatar_url && payload.avatar_url) fillPatch.avatar_url = payload.avatar_url;
-      if (!existing.full_name && payload.name) fillPatch.full_name = payload.name;
-      if (!existing.phone && payload.phone) fillPatch.phone = payload.phone;
-      api.saveProfile(existing.id, fillPatch).catch(() => {});
+    // Bir vaqtning o'zida 2 ta signIn (masalan onAuthStateChange + Welcome.jsx) poygalashmasligi uchun
+    if (signInInFlightRef.current && signInInFlightRef.current.key === lockKey) {
+      return signInInFlightRef.current.promise;
     }
 
-    const nextProfile = {
-      ...DEFAULT_GUEST_PROFILE,
-      ...existing,
-      // Mavjud akkauntning ism/OTM/kurs kabi ma'lumotlarini ustidan yozib yubormaslik
-      ...(payload.name && (!isExistingAccount || !existing.name)
-        ? { name: payload.name, full_name: payload.name }
-        : {}),
-      ...(payload.university && (!isExistingAccount || !existing.university)
-        ? { university: payload.university }
-        : {}),
-      ...(cleanCourse && (!isExistingAccount || !existing.course)
-        ? { course: cleanCourse }
-        : { course: normalizeCourse(existing?.course) }),
-      ...(payload.gender && (!isExistingAccount || !existing.gender)
-        ? { gender: payload.gender }
-        : {}),
-      ...(payload.birth_date && (!isExistingAccount || !existing.birth_date)
-        ? { birth_date: payload.birth_date }
-        : {}),
-      ...(payload.region && (!isExistingAccount || !existing.region)
-        ? { region: payload.region }
-        : {}),
-      ...(payload.avatar_url && (!isExistingAccount || !existing.avatar_url)
-        ? { avatar_url: payload.avatar_url }
-        : {}),
-      signedIn: true,
-    };
+    const run = (async () => {
+      // Agar Supabase Authda BOSHQA emailning eski sessiyasi qolib ketgan bo'lsa,
+      // tozalab tashlaymiz (keyin onAuthStateChange boshqa profilga o'tkazib yubormasligi uchun)
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const activeAuthEmail = String(sessionData?.session?.user?.email || '')
+          .trim()
+          .toLowerCase();
+        if (activeAuthEmail && cleanEmail && activeAuthEmail !== cleanEmail) {
+          await supabase.auth.signOut().catch(() => {});
+        } else if (activeAuthEmail && !cleanEmail && cleanPhone) {
+          await supabase.auth.signOut().catch(() => {});
+        }
+      } catch {
+        /* ignore */
+      }
 
-    setProfile(nextProfile);
-    writeStoredProfile(nextProfile);
-    return nextProfile;
+      let existing = await api
+        .findProfile({ id: cleanId, email: cleanEmail, phone: cleanPhone })
+        .catch(() => null);
+
+      const isExistingAccount = Boolean(existing);
+
+      if (!existing) {
+        existing = await api.createProfile({
+          full_name: payload.name || payload.full_name || 'Talaba',
+          email: cleanEmail,
+          phone: cleanPhone,
+          university: payload.university || '',
+          course: cleanCourse,
+          gender: payload.gender || '',
+          birth_date: payload.birth_date || '',
+          region: payload.region || '',
+          avatar_url: payload.avatar_url || '',
+          provider: payload.provider || 'email',
+          student_id: generateNumericId(),
+          status: 'unverified',
+        });
+      } else if (existing.id) {
+        // Mavjud bitta asosiy akkauntga to'g'ridan-to'g'ri ulanish va faqat bo'sh maydonlarni to'ldirish
+        const fillPatch = { last_login: new Date().toISOString() };
+        if (!existing.avatar_url && payload.avatar_url) fillPatch.avatar_url = payload.avatar_url;
+        if ((!existing.full_name || existing.full_name === 'Talaba') && payload.name) {
+          fillPatch.full_name = payload.name;
+        }
+        if (!existing.phone && cleanPhone) fillPatch.phone = cleanPhone;
+        if (!existing.email && cleanEmail) fillPatch.email = cleanEmail;
+        api.saveProfile(existing.id, fillPatch).catch(() => {});
+      }
+
+      const nextProfile = {
+        ...DEFAULT_GUEST_PROFILE,
+        ...existing,
+        // Mavjud akkauntning ism/OTM/kurs/student_id kabi ma'lumotlarini hech qachon ustidan yozmaslik
+        ...(payload.name && (!isExistingAccount || !existing.name || existing.name === 'Talaba')
+          ? { name: payload.name, full_name: payload.name }
+          : {}),
+        ...(payload.university && (!isExistingAccount || !existing.university)
+          ? { university: payload.university }
+          : {}),
+        ...(cleanCourse && (!isExistingAccount || !existing.course)
+          ? { course: cleanCourse }
+          : { course: normalizeCourse(existing?.course) }),
+        ...(payload.gender && (!isExistingAccount || !existing.gender)
+          ? { gender: payload.gender }
+          : {}),
+        ...(payload.birth_date && (!isExistingAccount || !existing.birth_date)
+          ? { birth_date: payload.birth_date }
+          : {}),
+        ...(payload.region && (!isExistingAccount || !existing.region)
+          ? { region: payload.region }
+          : {}),
+        ...(payload.avatar_url && (!isExistingAccount || !existing.avatar_url)
+          ? { avatar_url: payload.avatar_url }
+          : {}),
+        signedIn: true,
+      };
+
+      setProfile(nextProfile);
+      writeStoredProfile(nextProfile);
+      return nextProfile;
+    })();
+
+    signInInFlightRef.current = { key: lockKey, promise: run };
+    try {
+      return await run;
+    } finally {
+      if (signInInFlightRef.current?.promise === run) {
+        signInInFlightRef.current = null;
+      }
+    }
   }, []);
 
   // Google OAuth / Supabase Auth session automatic sync without requiring manual reload
@@ -220,8 +259,20 @@ export function StudentProvider({ children }) {
       if (mounted) setLoading(false);
     };
 
-    const syncOAuthUser = async (sessionUser) => {
+    const syncOAuthUser = async (sessionUser, authEvent = '') => {
       if (!sessionUser || !mounted) return null;
+
+      // Agar foydalanuvchi hozir email ro'yxatdan o'tishning anketa (details) bosqichida bo'lsa,
+      // hali bo'sh dublikat profil yaratmaslik kerak
+      try {
+        if (sessionStorage.getItem(SIGNUP_IN_PROGRESS_KEY) === '1') {
+          clearOAuthState();
+          return null;
+        }
+      } catch {
+        /* ignore */
+      }
+
       if (syncInFlightRef.current) return syncInFlightRef.current;
 
       const task = (async () => {
@@ -238,6 +289,19 @@ export function StudentProvider({ children }) {
             '';
 
           const current = readStoredProfile();
+          const oauthPending = hasOAuthCallbackSignals();
+
+          // Agar foydalanuvchi allaqachon boshqa akkauntda (masalan telefon yoki parol tiklash orqali)
+          // kirgan bo'lsa va yangi Google OAuth bosilmagan bo'lsa, eski sessiya profilni almashtirmasin
+          if (
+            current?.signedIn &&
+            !oauthPending &&
+            authEvent !== 'SIGNED_IN' &&
+            (!email || (current.email && current.email.toLowerCase() !== email))
+          ) {
+            return current;
+          }
+
           if (current?.signedIn && email && current?.email?.toLowerCase() === email) {
             if (googleAvatar && !current.avatar_url) {
               const withPic = { ...current, avatar_url: googleAvatar };
@@ -292,7 +356,7 @@ export function StudentProvider({ children }) {
         }
 
         if (data?.session?.user) {
-          await syncOAuthUser(data.session.user);
+          await syncOAuthUser(data.session.user, 'INITIAL_SESSION');
         } else if (!window.location.hash.includes('access_token=')) {
           // No session and no implicit hash pending
           clearOAuthState();
@@ -312,7 +376,7 @@ export function StudentProvider({ children }) {
           event === 'USER_UPDATED') &&
         session?.user
       ) {
-        syncOAuthUser(session.user);
+        syncOAuthUser(session.user, event);
       } else if (event === 'SIGNED_OUT') {
         if (mounted) {
           localStorage.removeItem(LOCAL_PROFILE_KEY);

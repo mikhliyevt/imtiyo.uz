@@ -32,7 +32,7 @@ export default function LanguageSwitcher({ className }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Tilni tanlash"
-        className="imtiyo-glass-pill inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 sm:px-3.5 text-[12.5px] font-bold text-[#08123A] hover:text-[#002D96] dark:text-slate-100 dark:hover:text-sky-300"
+        className="imtiyo-glass-pill inline-flex h-10 max-sm:h-9 shrink-0 items-center gap-1.5 max-sm:gap-1 whitespace-nowrap rounded-full px-3 max-sm:px-2.5 sm:px-3.5 text-[12.5px] max-sm:text-[12px] font-bold text-[#08123A] hover:text-[#002D96] dark:text-slate-100 dark:hover:text-sky-300"
       >
         <Globe className="h-3.5 w-3.5 text-[#1D6FF2] dark:text-sky-400" />
         <span>{current.short}</span>

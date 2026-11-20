@@ -397,11 +397,19 @@ export default function AppShell({
       }
     }
 
-    // 2. Admin tomonidan yuborilgan maqsadli (registered / guest / all) bildirishnomalar
+    // 2. Admin tomonidan yuborilgan maqsadli (user / registered / guest / all) bildirishnomalar
     broadcasts.forEach((b) => {
       if (!b || !b.title) return;
       const aud = b.audience || 'all';
+      const matchesTargetUser =
+        aud === 'user' &&
+        isSignedIn &&
+        ((b.target_profile_id && String(b.target_profile_id) === String(profile?.id || '')) ||
+          (b.target_student_id &&
+            String(b.target_student_id).replace(/^#/, '') ===
+              String(profile?.student_id || '').replace(/^#/, '')));
       const matchesAudience =
+        matchesTargetUser ||
         aud === 'all' ||
         (aud === 'registered' && isSignedIn) ||
         (aud === 'guest' && !isSignedIn);
@@ -414,7 +422,8 @@ export default function AppShell({
         : t('notif.today');
       list.push({
         id: `broadcast:${b.id}`,
-        type: b.tone === 'alert' ? 'rejected' : b.tone === 'promo' ? 'broadcast' : 'broadcast',
+        type: b.tone === 'alert' ? 'rejected' : 'broadcast',
+        isPersonal: aud === 'user',
         title: b.title,
         desc: b.message,
         time: dateStr,
@@ -446,6 +455,7 @@ export default function AppShell({
   }, [
     profile?.signedIn,
     profile?.id,
+    profile?.student_id,
     profile?.status,
     profile?.rejection_reason,
     profile?.reviewed_at,
@@ -552,16 +562,16 @@ export default function AppShell({
   );
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col bg-white text-[#08123A] pb-24 transition-colors duration-200 dark:bg-[#070d1f] dark:text-slate-100 md:pb-0">
+    <div className="relative flex min-h-screen w-full flex-col bg-white text-[#08123A] pb-24 transition-colors duration-200 max-md:overflow-x-clip dark:bg-[#070d1f] dark:text-slate-100 md:pb-0">
       {/* =========================================================
           GLASSMORPHISM HEADER (Yengil tiniq blur + glass pill elementlar)
       ========================================================= */}
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/55 backdrop-blur-md shadow-[0_8px_28px_-14px_rgba(0,45,150,0.12)] dark:border-white/10 dark:bg-[#0B1228]/58 dark:shadow-[0_10px_34px_-14px_rgba(0,0,0,0.55)]">
-        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-2.5 px-3.5 py-2.5 sm:gap-3.5 sm:px-6 md:px-8">
+        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-2 px-3 py-2.5 sm:gap-3.5 sm:px-6 md:px-8">
           {/* LOGO OVAL ICHIDA (Glassmorphism) */}
           <Link
             to="/"
-            className="imtiyo-glass-pill inline-flex shrink-0 items-center rounded-full px-3 py-1.5 sm:px-4 sm:py-1.5"
+            className="imtiyo-glass-pill inline-flex shrink-0 items-center rounded-full px-2.5 py-1.5 sm:px-4 sm:py-1.5"
           >
             <Logo size="sm" />
           </Link>
@@ -616,7 +626,7 @@ export default function AppShell({
                 setSavedModalOpen(true);
               }}
               aria-label={t('header.savedTitle')}
-              className="imtiyo-glass-pill relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
+              className="imtiyo-glass-pill relative grid h-10 w-10 max-sm:h-9 max-sm:w-9 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
             >
               <Heart className="h-[18px] w-[18px] fill-transparent text-current" />
               {likedIds.length > 0 && (
@@ -635,7 +645,7 @@ export default function AppShell({
                   if (!notifOpen) markAllRead();
                 }}
                 aria-label={t('header.notifications')}
-                className="imtiyo-glass-pill relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
+                className="imtiyo-glass-pill relative grid h-10 w-10 max-sm:h-9 max-sm:w-9 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
               >
                 <Bell className="h-[18px] w-[18px] text-current" />
                 {unreadCount > 0 && (
@@ -651,7 +661,7 @@ export default function AppShell({
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 overflow-hidden rounded-[24px] border border-slate-200/95 bg-white/95 p-3.5 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
+                <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-24px)] sm:w-96 overflow-hidden rounded-[24px] border border-slate-200/95 bg-white/95 p-3.5 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
                   <div className="mb-2.5 flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
                     <span className="text-[13px] font-extrabold text-[#08123A] dark:text-white">
                       {t('header.notifications')}
@@ -703,6 +713,11 @@ export default function AppShell({
                             >
                               {n.title}
                             </p>
+                            {n.isPersonal && (
+                              <span className="shrink-0 rounded-full bg-violet-500/15 px-2 py-0.5 text-[9.5px] font-extrabold text-violet-700 dark:text-violet-300">
+                                {t('notif.personalTag')}
+                              </span>
+                            )}
                           </div>
                           <span className="shrink-0 text-[10px] font-semibold text-slate-400">
                             {n.time}
@@ -887,7 +902,8 @@ export default function AppShell({
                 )}
               </div>
             ) : (
-              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              /* Mobilda tepadagi "Ro'yxatdan o'tish" tugmasi yashirilgan — pastdagi Profil tugmasi ishlaydi (PC versiya o'zgarishsiz!) */
+              <div className="hidden shrink-0 items-center gap-1.5 sm:gap-2 md:flex">
                 <Link
                   to="/welcome?mode=signin"
                   className="imtiyo-glass-pill hidden h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-extrabold text-[#08123A] hover:text-[#002D96] dark:text-slate-100 dark:hover:text-sky-300 lg:inline-flex"

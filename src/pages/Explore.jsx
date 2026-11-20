@@ -184,7 +184,6 @@ export default function Explore() {
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#1D6FF2] dark:text-sky-400" />
           <input
             type="text"
-            autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('explore.search')}
