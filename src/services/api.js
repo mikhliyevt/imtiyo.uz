@@ -789,28 +789,41 @@ export const api = {
     return false;
   },
 
-  // --- CATEGORIES ---
+  // --- CATEGORIES (100% SUPABASE — localStorage ishlatilmaydi) ---
   async listCategories(force = false) {
     return cachedRequest(
       'categories',
       async () => {
         try {
-          const { data, error } = await supabase
-            .from('categories')
-            .select('*')
-            .order('sort_order', { ascending: true });
-          if (!error && Array.isArray(data) && data.length > 0) {
-            writeLocal(STORAGE_KEYS.CATEGORIES, data);
-            return data;
-          }
+          localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
         } catch {
-          /* fallback */
+          /* ignore */
         }
-        const local = readLocal(STORAGE_KEYS.CATEGORIES, null);
-        if (Array.isArray(local) && local.length > 0) {
-          return [...local].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+        const { data, error } = await supabase
+          .from('categories')
+          .select('*')
+          .order('sort_order', { ascending: true });
+
+        if (error) {
+          console.error('[Imtiyo] Supabase categories SELECT xatosi:', error);
+          return DEFAULT_CATEGORIES;
         }
-        writeLocal(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+
+        if (Array.isArray(data) && data.length > 0) {
+          return data;
+        }
+
+        // Jadval bo'sh bo'lsa bir marta standart kategoriyalarni Supabase'ga yozib qo'yamiz
+        const { data: seeded, error: seedErr } = await supabase
+          .from('categories')
+          .upsert(DEFAULT_CATEGORIES, { onConflict: 'id' })
+          .select('*')
+          .order('sort_order', { ascending: true });
+
+        if (!seedErr && Array.isArray(seeded) && seeded.length > 0) {
+          return seeded;
+        }
         return DEFAULT_CATEGORIES;
       },
       force
@@ -818,12 +831,13 @@ export const api = {
   },
 
   async saveCategory(cat) {
-    const current = await this.listCategories();
+    const current = await this.listCategories(true);
     const cleanId = (cat.id || cat.label_uz || 'cat-' + Date.now())
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '-')
       .replace(/-+/g, '-');
 
+    const existing = current.find((c) => c.id === cleanId);
     const record = {
       id: cleanId,
       label_uz: (cat.label_uz || '').trim() || 'Yangi kategoriya',
@@ -831,52 +845,76 @@ export const api = {
       label_en: (cat.label_en || cat.label_uz || '').trim(),
       icon: cat.icon || 'Sparkles',
       sort_order:
-        typeof cat.sort_order === 'number' ? cat.sort_order : current.length + 1,
+        typeof cat.sort_order === 'number'
+          ? cat.sort_order
+          : existing?.sort_order || current.length + 1,
     };
 
-    const existsIdx = current.findIndex((c) => c.id === record.id);
-    const next =
-      existsIdx >= 0
-        ? current.map((c, idx) => (idx === existsIdx ? { ...c, ...record } : c))
-        : [...current, record];
+    const { error } = await supabase
+      .from('categories')
+      .upsert(record, { onConflict: 'id' });
 
-    writeLocal(STORAGE_KEYS.CATEGORIES, next);
-    setCached('categories', next);
-    try {
-      await supabase.from('categories').upsert(record, { onConflict: 'id' });
-    } catch {
-      /* ignore */
+    if (error) {
+      console.error('[Imtiyo] Supabase categories UPSERT xatosi:', error);
+      throw new Error(
+        `Supabase 'categories' jadvaliga saqlab bo‘lmadi: ${error.message}`
+      );
     }
-    window.dispatchEvent(new Event('imtiyo_categories_changed'));
-    return next;
+
+    invalidateCache('categories');
+    const fresh = await this.listCategories(true);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_categories_changed'));
+    }
+    return fresh;
   },
 
   async deleteCategory(catId) {
-    if (catId === 'all') return this.listCategories();
-    const current = await this.listCategories();
-    const next = current.filter((c) => c.id !== catId);
-    writeLocal(STORAGE_KEYS.CATEGORIES, next);
-    setCached('categories', next);
-    try {
-      await supabase.from('categories').delete().eq('id', catId);
-    } catch {
-      /* ignore */
+    if (catId === 'all') return this.listCategories(true);
+    const { error } = await supabase.from('categories').delete().eq('id', catId);
+
+    if (error) {
+      console.error('[Imtiyo] Supabase categories DELETE xatosi:', error);
+      throw new Error(
+        `Supabase 'categories' jadvalidan o‘chirib bo‘lmadi: ${error.message}`
+      );
     }
-    window.dispatchEvent(new Event('imtiyo_categories_changed'));
-    return next;
+
+    invalidateCache('categories');
+    const fresh = await this.listCategories(true);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_categories_changed'));
+    }
+    return fresh;
   },
 
   async reorderCategories(orderedList) {
-    const normalized = orderedList.map((c, idx) => ({ ...c, sort_order: idx + 1 }));
-    writeLocal(STORAGE_KEYS.CATEGORIES, normalized);
-    setCached('categories', normalized);
-    try {
-      await supabase.from('categories').upsert(normalized, { onConflict: 'id' });
-    } catch {
-      /* ignore */
+    const normalized = orderedList.map((c, idx) => ({
+      id: c.id,
+      label_uz: c.label_uz || c.name || c.id,
+      label_ru: c.label_ru || c.label_uz || c.id,
+      label_en: c.label_en || c.label_uz || c.id,
+      icon: c.icon || 'Sparkles',
+      sort_order: idx + 1,
+    }));
+
+    const { error } = await supabase
+      .from('categories')
+      .upsert(normalized, { onConflict: 'id' });
+
+    if (error) {
+      console.error('[Imtiyo] Supabase categories REORDER xatosi:', error);
+      throw new Error(
+        `Supabase 'categories' tartibini saqlab bo‘lmadi: ${error.message}`
+      );
     }
-    window.dispatchEvent(new Event('imtiyo_categories_changed'));
-    return normalized;
+
+    invalidateCache('categories');
+    const fresh = await this.listCategories(true);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_categories_changed'));
+    }
+    return fresh;
   },
 
   // --- BRANDS ---
@@ -2290,32 +2328,38 @@ export const api = {
     return true;
   },
 
-  // --- GLOBAL SITE SETTINGS (Admin Panel -> Sozlamalar) ---
+  // --- GLOBAL SITE SETTINGS (100% SUPABASE — localStorage ishlatilmaydi) ---
   getSiteSettingsSync() {
-    const local = readLocal(STORAGE_KEYS.SITE_SETTINGS, null);
-    return normalizeSiteSettings(local || DEFAULT_SITE_SETTINGS);
+    const memHit = getCached('site_settings');
+    return normalizeSiteSettings(memHit || DEFAULT_SITE_SETTINGS);
   },
 
   async getSiteSettings(force = false) {
     return cachedRequest(
       'site_settings',
       async () => {
-        const local = readLocal(STORAGE_KEYS.SITE_SETTINGS, null);
         try {
-          const { data, error } = await supabase
-            .from('site_settings')
-            .select('*')
-            .eq('id', 'default')
-            .maybeSingle();
-          if (!error && data) {
-            const normalized = normalizeSiteSettings(data);
-            writeLocal(STORAGE_KEYS.SITE_SETTINGS, normalized);
-            return normalized;
-          }
+          localStorage.removeItem(STORAGE_KEYS.SITE_SETTINGS);
         } catch {
-          /* fallback to local */
+          /* ignore */
         }
-        return normalizeSiteSettings(local || DEFAULT_SITE_SETTINGS);
+
+        const { data, error } = await supabase
+          .from('site_settings')
+          .select('*')
+          .eq('id', 'default')
+          .maybeSingle();
+
+        if (error) {
+          console.error('[Imtiyo] Supabase site_settings SELECT xatosi:', error);
+          return normalizeSiteSettings(DEFAULT_SITE_SETTINGS);
+        }
+
+        if (data) {
+          return normalizeSiteSettings(data);
+        }
+
+        return normalizeSiteSettings(DEFAULT_SITE_SETTINGS);
       },
       force
     );
@@ -2327,19 +2371,27 @@ export const api = {
       id: 'default',
       updated_at: new Date().toISOString(),
     };
-    writeLocal(STORAGE_KEYS.SITE_SETTINGS, normalized);
-    setCached('site_settings', normalized);
 
-    try {
-      await supabase.from('site_settings').upsert(normalized, { onConflict: 'id' });
-    } catch {
-      /* localStorage fallback remains active */
+    const { data, error } = await supabase
+      .from('site_settings')
+      .upsert(normalized, { onConflict: 'id' })
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('[Imtiyo] Supabase site_settings UPSERT xatosi:', error);
+      throw new Error(
+        `Supabase 'site_settings' jadvaliga saqlab bo‘lmadi: ${error.message}`
+      );
     }
+
+    const saved = normalizeSiteSettings(data || normalized);
+    setCached('site_settings', saved);
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('imtiyo_site_settings_changed'));
     }
-    return normalized;
+    return saved;
   },
 };
 

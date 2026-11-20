@@ -18,7 +18,7 @@ import {
   Utensils,
 } from 'lucide-react';
 import { useLang } from '@/lib/LanguageContext';
-import { api, DEFAULT_CATEGORIES } from '@/services/api';
+import { api } from '@/services/api';
 import { cn } from '@/lib/utils';
 
 export const CATEGORY_ICON_MAP = {
@@ -42,23 +42,32 @@ export const CATEGORY_ICON_MAP = {
 
 export default function CategoryPills({ value = 'all', onChange, selected, onSelect }) {
   const { lang } = useLang();
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const activeVal = selected !== undefined ? selected : value;
   const handleSelect = onSelect || onChange || (() => {});
 
   useEffect(() => {
-    const load = () => {
+    let active = true;
+    const load = (force = false) => {
       api
-        .listCategories()
+        .listCategories(force)
         .then((list) => {
-          if (Array.isArray(list) && list.length > 0) setCategories(list);
+          if (active && Array.isArray(list)) setCategories(list);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (active) setLoading(false);
+        });
     };
-    load();
-    window.addEventListener('imtiyo_categories_changed', load);
-    return () => window.removeEventListener('imtiyo_categories_changed', load);
+    load(false);
+    const onChanged = () => load(true);
+    window.addEventListener('imtiyo_categories_changed', onChanged);
+    return () => {
+      active = false;
+      window.removeEventListener('imtiyo_categories_changed', onChanged);
+    };
   }, []);
 
   const getLabel = (cat) => {
@@ -66,6 +75,19 @@ export default function CategoryPills({ value = 'all', onChange, selected, onSel
     if (lang === 'en' && cat.label_en) return cat.label_en;
     return cat.label_uz || cat.name || cat.id;
   };
+
+  if (loading && categories.length === 0) {
+    return (
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-9 w-28 shrink-0 animate-pulse rounded-full bg-slate-200/75 dark:bg-slate-800/80"
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="-mx-4 flex gap-2 overflow-x-auto px-4 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

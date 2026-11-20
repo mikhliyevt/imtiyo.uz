@@ -1,5 +1,30 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/services/api';
+import { api, DEFAULT_SITE_SETTINGS, normalizeSiteSettings } from '@/services/api';
+
+// 100% Supabase-backed shared in-memory state (localStorage ishlatilmaydi)
+let sharedState = {
+  settings: normalizeSiteSettings(DEFAULT_SITE_SETTINGS),
+  loaded: false,
+};
+let initialFetchStarted = false;
+const listeners = new Set();
+
+function notifyListeners() {
+  listeners.forEach((fn) => fn(sharedState));
+}
+
+async function fetchLatestSiteSettings(force = false) {
+  try {
+    const res = await api.getSiteSettings(force);
+    sharedState = {
+      settings: normalizeSiteSettings(res || DEFAULT_SITE_SETTINGS),
+      loaded: true,
+    };
+  } catch {
+    sharedState = { ...sharedState, loaded: true };
+  }
+  notifyListeners();
+}
 
 export function normalizeSocialUrl(raw, type = 'web') {
   const val = String(raw || '').trim();
@@ -28,42 +53,33 @@ export function formatTelegramHandle(raw) {
   return val;
 }
 
-export function useSiteSettings() {
-  const [settings, setSettings] = useState(() => api.getSiteSettingsSync());
+export function useSiteSettingsState() {
+  const [state, setState] = useState(() => sharedState);
 
   useEffect(() => {
-    let active = true;
-    api
-      .getSiteSettings()
-      .then((res) => {
-        if (active && res) setSettings(res);
-      })
-      .catch(() => {});
+    listeners.add(setState);
 
-    const syncFromStore = () => {
-      setSettings(api.getSiteSettingsSync());
-      api
-        .getSiteSettings(true)
-        .then((res) => {
-          if (active && res) setSettings(res);
-        })
-        .catch(() => {});
+    if (!initialFetchStarted) {
+      initialFetchStarted = true;
+      fetchLatestSiteSettings(true);
+    } else if (sharedState !== state) {
+      setState(sharedState);
+    }
+
+    const onChanged = () => {
+      fetchLatestSiteSettings(true);
     };
 
-    const onStorage = (e) => {
-      if (!e.key || e.key === 'imtiyo_site_settings_v1') {
-        syncFromStore();
-      }
-    };
-
-    window.addEventListener('imtiyo_site_settings_changed', syncFromStore);
-    window.addEventListener('storage', onStorage);
+    window.addEventListener('imtiyo_site_settings_changed', onChanged);
     return () => {
-      active = false;
-      window.removeEventListener('imtiyo_site_settings_changed', syncFromStore);
-      window.removeEventListener('storage', onStorage);
+      listeners.delete(setState);
+      window.removeEventListener('imtiyo_site_settings_changed', onChanged);
     };
   }, []);
 
-  return settings;
+  return state;
+}
+
+export function useSiteSettings() {
+  return useSiteSettingsState().settings;
 }

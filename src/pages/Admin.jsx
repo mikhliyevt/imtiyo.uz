@@ -357,9 +357,13 @@ export default function Admin() {
   const [brandFormDirty, setBrandFormDirty] = useState(false);
   const [offerFormDirty, setOfferFormDirty] = useState(false);
 
-  // Global sayt sozlamalari (Admin -> Sozlamalar)
-  const [siteSettings, setSiteSettings] = useState(() => api.getSiteSettingsSync());
-  const [savedSiteSettings, setSavedSiteSettings] = useState(() => api.getSiteSettingsSync());
+  // Global sayt sozlamalari (100% Supabase — Admin -> Sozlamalar)
+  const [siteSettings, setSiteSettings] = useState(() =>
+    normalizeSiteSettings(DEFAULT_SITE_SETTINGS)
+  );
+  const [savedSiteSettings, setSavedSiteSettings] = useState(() =>
+    normalizeSiteSettings(DEFAULT_SITE_SETTINGS)
+  );
   const [savingSiteSettings, setSavingSiteSettings] = useState(false);
 
   // Kategoriyalar
@@ -1029,9 +1033,13 @@ export default function Admin() {
       const list = Array.isArray(updated) ? updated : categories;
       setCategories(list);
       setSavedCategoriesSnapshot(list.map((c) => c.id).join(','));
-      toast({ title: 'Kategoriyalar tartibi saqlandi!' });
-    } catch {
-      toast({ title: 'Tartibni saqlashda xatolik', variant: 'destructive' });
+      toast({ title: 'Kategoriyalar tartibi Supabase’ga saqlandi!' });
+    } catch (err) {
+      toast({
+        title: 'Tartibni saqlashda xatolik',
+        description: err?.message || 'Supabase RLS ruxsatlarini tekshiring',
+        variant: 'destructive',
+      });
     } finally {
       setSavingCategoryOrder(false);
     }
@@ -1381,11 +1389,15 @@ export default function Admin() {
       setSiteSettings(normalized);
       setSavedSiteSettings(normalized);
       toast({
-        title: 'Sozlamalar muvaffaqiyatli saqlandi!',
-        description: 'O‘zgarishlar sayt va admin panelda darhol kuchga kirdi.',
+        title: 'Sozlamalar Supabase’ga muvaffaqiyatli saqlandi!',
+        description: 'O‘zgarishlar barcha foydalanuvchilar (jumladan Incognito) uchun kuchga kirdi.',
       });
-    } catch {
-      toast({ title: 'Sozlamalarni saqlashda xatolik', variant: 'destructive' });
+    } catch (err) {
+      toast({
+        title: 'Sozlamalarni saqlashda xatolik',
+        description: err?.message || 'Supabase site_settings jadvali va RLS ruxsatlarini tekshiring.',
+        variant: 'destructive',
+      });
     } finally {
       setSavingSiteSettings(false);
     }
@@ -2488,11 +2500,19 @@ export default function Admin() {
                             <button
                               type="button"
                               onClick={async () => {
-                                const next = await api.deleteCategory(cat.id);
-                                const list = Array.isArray(next) ? next : [];
-                                setCategories(list);
-                                setSavedCategoriesSnapshot(list.map((c) => c.id).join(','));
-                                toast({ title: 'Kategoriya o‘chirildi' });
+                                try {
+                                  const next = await api.deleteCategory(cat.id);
+                                  const list = Array.isArray(next) ? next : [];
+                                  setCategories(list);
+                                  setSavedCategoriesSnapshot(list.map((c) => c.id).join(','));
+                                  toast({ title: 'Kategoriya Supabase’dan o‘chirildi' });
+                                } catch (err) {
+                                  toast({
+                                    title: 'Kategoriyani o‘chirishda xatolik',
+                                    description: err?.message || 'Supabase RLS ruxsatlarini tekshiring',
+                                    variant: 'destructive',
+                                  });
+                                }
                               }}
                               className="grid h-7 w-7 place-items-center rounded-full bg-rose-50 text-rose-500 dark:bg-rose-950/60 dark:text-rose-400"
                             >

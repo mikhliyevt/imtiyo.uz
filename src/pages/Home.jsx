@@ -29,7 +29,7 @@ export default function Home() {
 
   const [brands, setBrands] = useState([]);
   const [offers, setOffers] = useState([]);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [likedIds, setLikedIds] = useState(() => api.getLikedIds().map(String));
 
@@ -82,8 +82,16 @@ export default function Home() {
       .finally(() => {
         if (mounted) setLoadingData(false);
       });
+    const onCatsChanged = () => {
+      api.listCategories(true).then((cList) => {
+        if (mounted && Array.isArray(cList)) setCategories(cList);
+      });
+    };
+    window.addEventListener('imtiyo_categories_changed', onCatsChanged);
+
     return () => {
       mounted = false;
+      window.removeEventListener('imtiyo_categories_changed', onCatsChanged);
     };
   }, []);
 

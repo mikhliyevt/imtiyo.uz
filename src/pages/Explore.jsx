@@ -16,7 +16,7 @@ export default function Explore() {
 
   const [brands, setBrands] = useState([]);
   const [offers, setOffers] = useState([]);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [category, setCategory] = useState(searchParams.get('cat') || 'all');

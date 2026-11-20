@@ -1,12 +1,13 @@
 import { AlertTriangle } from 'lucide-react';
 import { useLang } from '@/lib/LanguageContext';
-import { useSiteSettings } from '@/lib/useSiteSettings';
+import { useSiteSettingsState } from '@/lib/useSiteSettings';
 
 export default function TopMarqueeBanner() {
   const { t } = useLang();
-  const siteSettings = useSiteSettings();
+  const { settings: siteSettings, loaded } = useSiteSettingsState();
 
-  if (!siteSettings.show_test_banner) return null;
+  // Supabase'dan javob kelgunicha eski default banner chiqib miltillamasin!
+  if (!loaded || !siteSettings.show_test_banner) return null;
 
   const items = Array.from({ length: 6 }, (_, i) => i);
   const bannerBody = String(siteSettings.test_banner_text || '').trim() || t('marquee.testMode');

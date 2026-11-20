@@ -35,7 +35,7 @@ export default function BrandDetail() {
   const [brand, setBrand] = useState(null);
   const [offers, setOffers] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState([]);
   const [likedIds, setLikedIds] = useState(() => api.getLikedIds().map(String));
 
   const [selectedOffer, setSelectedOffer] = useState(null);
