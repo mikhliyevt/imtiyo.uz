@@ -4,11 +4,13 @@ import { Flame, Heart, QrCode, Search, Smartphone, Sparkles, X } from 'lucide-re
 import AppShell, { openAuthPromptModal } from '@/components/AppShell';
 import CategoryPills from '@/components/CategoryPills';
 import CardImageBlur from '@/components/CardImageBlur';
+import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { cn } from '@/lib/utils';
 
 export default function Explore() {
+  const { t, lang } = useLang();
   const { profile } = useStudent();
   const [searchParams] = useSearchParams();
 
@@ -50,6 +52,8 @@ export default function Explore() {
       const brandOffers = offers.filter((o) => String(o.brand_id) === String(brand.id));
       if (brandOffers.length > 0) {
         brandOffers.forEach((o) => {
+          const locTitle =
+            o.title?.[lang] || o[`title_${lang}`] || o.title_uz || o.title?.uz || brand.name;
           cards.push({
             id: o.id,
             brandId: brand.id,
@@ -62,7 +66,7 @@ export default function Explore() {
             accent: brand.accent || '#002D96',
             accent2: brand.accent2 || '#1D6FF2',
             discount: o.discount || brand.discount || '-15%',
-            title: o.title_uz || o.title?.uz || `${brand.name} talaba chegirmasi`,
+            title: locTitle,
             validUntil: o.valid_until || brand.valid_until || '31/12/2026',
             redemption: o.redemption || brand.redemption || 'qr',
             activations: o.activations_count || brand.activations_count || 240,
@@ -81,7 +85,8 @@ export default function Explore() {
           accent: brand.accent || '#002D96',
           accent2: brand.accent2 || '#1D6FF2',
           discount: brand.discount || '-20%',
-          title: brand.tagline?.uz || `${brand.name} — talabalar uchun maxsus chegirma`,
+          title:
+            brand.tagline?.[lang] || brand.tagline?.uz || `${brand.name} · ${t('app.tagline')}`,
           validUntil: brand.valid_until || '31/12/2026',
           redemption: brand.redemption || 'qr',
           activations: brand.activations_count || 240,
@@ -89,7 +94,7 @@ export default function Explore() {
       }
     });
     return cards;
-  }, [brands, offers]);
+  }, [brands, offers, lang, t]);
 
   const filteredCards = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -125,13 +130,18 @@ export default function Explore() {
   };
 
   const activeCategoryObj = categories.find((c) => c.id === category);
+  const activeCategoryLabel =
+    (lang === 'ru' && activeCategoryObj?.label_ru) ||
+    (lang === 'en' && activeCategoryObj?.label_en) ||
+    activeCategoryObj?.label_uz ||
+    '';
   const breadcrumbs =
     category !== 'all' && activeCategoryObj
       ? [
-          { label: 'Chegirmalar', onClick: () => setCategory('all') },
-          { label: activeCategoryObj.label_uz },
+          { label: t('nav.deals'), onClick: () => setCategory('all') },
+          { label: activeCategoryLabel },
         ]
-      : [{ label: 'Chegirmalar va Qidiruv' }];
+      : [{ label: t('nav.explore') }];
 
   return (
     <AppShell hideSearch breadcrumbs={breadcrumbs} showImtiyoAbout={category !== 'all'}>
@@ -139,11 +149,10 @@ export default function Explore() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-[24px] font-extrabold text-[#08123A] dark:text-white">
-              Chegirmalar va Qidiruv
+              {t('explore.title')}
             </h1>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
-              Barcha hamkor brendlar va individual talaba chegirmalari ({filteredCards.length} ta
-              natija)
+              {t('explore.subtitle', { n: filteredCards.length })}
             </p>
           </div>
 
@@ -165,7 +174,9 @@ export default function Explore() {
                   : 'fill-transparent text-[#002D96] dark:text-sky-300'
               )}
             />
-            <span>Saqlanganlar ({likedIds.length})</span>
+            <span>
+              {t('header.savedTitle')} ({likedIds.length})
+            </span>
           </button>
         </div>
 
@@ -176,7 +187,7 @@ export default function Explore() {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Hamkor brend, taom, sartaroshxona yoki chegirma qidiring..."
+            placeholder={t('explore.search')}
             className="h-12 w-full rounded-full border border-slate-200/90 bg-white/95 pl-12 pr-11 text-[14px] font-bold text-[#08123A] shadow-[0_14px_32px_-22px_rgba(0,45,150,0.35)] outline-none backdrop-blur-xl focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-900/90 dark:text-white dark:focus:border-sky-400"
           />
           {query && (
@@ -205,10 +216,10 @@ export default function Explore() {
           <div className="rounded-[26px] border border-dashed border-slate-300 bg-white/80 py-14 text-center dark:border-slate-700 dark:bg-slate-900/60">
             <Sparkles className="mx-auto h-6 w-6 text-slate-400" />
             <p className="mt-2 text-[14px] font-extrabold text-[#08123A] dark:text-white">
-              Mos chegirmalar topilmadi
+              {t('explore.empty')}
             </p>
             <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-              Qidiruv so‘zini yoki kategoriyani o‘zgartirib ko‘ring.
+              {t('explore.emptyHint')}
             </p>
           </div>
         ) : (
@@ -260,7 +271,7 @@ export default function Explore() {
                     <button
                       type="button"
                       onClick={(e) => handleToggleLike(e, card.id)}
-                      aria-label="Chegirmani saqlash"
+                      aria-label={t('brand.saveOffer')}
                       className="absolute bottom-2 right-3 z-20 grid h-9 w-9 place-items-center rounded-full border border-slate-200/80 bg-white text-[#08123A] shadow-md transition-transform hover:scale-110 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                     >
                       <Heart
@@ -289,11 +300,11 @@ export default function Explore() {
                         ) : (
                           <QrCode className="h-3.5 w-3.5 text-[#1D6FF2] dark:text-sky-400" />
                         )}
-                        {card.redemption === 'app' ? 'Online' : 'Kassada'}
+                        {card.redemption === 'app' ? t('common.online') : t('common.onsite')}
                       </span>
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 font-extrabold text-amber-600 dark:text-amber-300">
                         <Flame className="h-3 w-3" />
-                        {Number(card.activations).toLocaleString()} aktivatsiya
+                        {Number(card.activations).toLocaleString()} {t('common.activations')}
                       </span>
                     </div>
                   </div>

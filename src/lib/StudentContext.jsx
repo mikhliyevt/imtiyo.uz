@@ -134,6 +134,8 @@ export function StudentProvider({ children }) {
       .findProfile({ email: cleanEmail, phone: payload.phone || '' })
       .catch(() => null);
 
+    const isExistingAccount = Boolean(existing);
+
     if (!existing) {
       existing = await api.createProfile({
         full_name: payload.name || payload.full_name || 'Talaba',
@@ -149,18 +151,41 @@ export function StudentProvider({ children }) {
         student_id: generateNumericId(),
         status: 'unverified',
       });
+    } else if (existing.id) {
+      // Mavjud akkauntga (masalan avval email bilan kirgan, endi Google bilan kirgan)
+      // to'g'ridan-to'g'ri ulanish va faqat bo'sh qolgan maydonlarni to'ldirish
+      const fillPatch = { last_login: new Date().toISOString() };
+      if (!existing.avatar_url && payload.avatar_url) fillPatch.avatar_url = payload.avatar_url;
+      if (!existing.full_name && payload.name) fillPatch.full_name = payload.name;
+      if (!existing.phone && payload.phone) fillPatch.phone = payload.phone;
+      api.saveProfile(existing.id, fillPatch).catch(() => {});
     }
 
     const nextProfile = {
       ...DEFAULT_GUEST_PROFILE,
       ...existing,
-      ...(payload.name ? { name: payload.name, full_name: payload.name } : {}),
-      ...(payload.university ? { university: payload.university } : {}),
-      ...(cleanCourse ? { course: cleanCourse } : { course: normalizeCourse(existing?.course) }),
-      ...(payload.gender ? { gender: payload.gender } : {}),
-      ...(payload.birth_date ? { birth_date: payload.birth_date } : {}),
-      ...(payload.region ? { region: payload.region } : {}),
-      ...(payload.avatar_url ? { avatar_url: payload.avatar_url } : {}),
+      // Mavjud akkauntning ism/OTM/kurs kabi ma'lumotlarini ustidan yozib yubormaslik
+      ...(payload.name && (!isExistingAccount || !existing.name)
+        ? { name: payload.name, full_name: payload.name }
+        : {}),
+      ...(payload.university && (!isExistingAccount || !existing.university)
+        ? { university: payload.university }
+        : {}),
+      ...(cleanCourse && (!isExistingAccount || !existing.course)
+        ? { course: cleanCourse }
+        : { course: normalizeCourse(existing?.course) }),
+      ...(payload.gender && (!isExistingAccount || !existing.gender)
+        ? { gender: payload.gender }
+        : {}),
+      ...(payload.birth_date && (!isExistingAccount || !existing.birth_date)
+        ? { birth_date: payload.birth_date }
+        : {}),
+      ...(payload.region && (!isExistingAccount || !existing.region)
+        ? { region: payload.region }
+        : {}),
+      ...(payload.avatar_url && (!isExistingAccount || !existing.avatar_url)
+        ? { avatar_url: payload.avatar_url }
+        : {}),
       signedIn: true,
     };
 

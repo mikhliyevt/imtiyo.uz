@@ -35,7 +35,7 @@ serve(async (req) => {
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:16px;">
             <h2 style="color:#002D96;margin-bottom:8px;">IMTIYO platformasi</h2>
-            <p style="color:#475569;font-size:14px;">Ro‘yxatdan o‘tishni yakunlash uchun 6 xonali tasdiqlash kodingiz:</p>
+            <p style="color:#475569;font-size:14px;">Ro‘yxatdan o‘tishni yakunlash uchun tasdiqlash kodingiz:</p>
             <div style="background:#F5F8FF;padding:16px;border-radius:12px;text-align:center;font-size:28px;font-weight:800;letter-spacing:6px;color:#002D96;margin:16px 0;">
               ${code}
             </div>

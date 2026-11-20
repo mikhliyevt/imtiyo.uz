@@ -8,9 +8,46 @@ import {
   Users,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
+import { useLang } from '@/lib/LanguageContext';
 import { api, DEFAULT_SITE_CONTENT } from '@/services/api';
 
+const LOCALIZED_ABOUT = {
+  ru: {
+    badge: 'О нас',
+    title: 'Лучшая платформа скидок для студентов',
+    subtitle:
+      'IMTIYO — современная цифровая экосистема, объединяющая студентов Узбекистана с их любимыми брендами.',
+    sections: [
+      {
+        heading: 'Наша миссия',
+        body: 'Помогать каждому студенту Узбекистана экономить на питании, обучении, спорте, технологиях и отдыхе с помощью единой цифровой карты студента.',
+      },
+      {
+        heading: 'Для брендов-партнёров',
+        body: 'IMTIYO помогает компаниям выходить на активную молодёжную аудиторию, увеличивать лояльность и привлекать проверенных студентов в свои филиалы и приложения.',
+      },
+    ],
+  },
+  en: {
+    badge: 'About us',
+    title: 'The #1 student discounts platform',
+    subtitle:
+      'IMTIYO is a modern digital ecosystem connecting students across Uzbekistan with their favorite brands.',
+    sections: [
+      {
+        heading: 'Our mission',
+        body: 'Helping every student in Uzbekistan save on food, education, fitness, tech, and entertainment through a single free digital Student ID.',
+      },
+      {
+        heading: 'For partner brands',
+        body: 'IMTIYO connects businesses with an active university audience, boosting loyalty and bringing verified students directly to stores and apps.',
+      },
+    ],
+  },
+};
+
 export default function About() {
+  const { t, lang } = useLang();
   const [about, setAbout] = useState(DEFAULT_SITE_CONTENT.about);
 
   useEffect(() => {
@@ -24,8 +61,10 @@ export default function About() {
     return () => window.removeEventListener('imtiyo_content_changed', load);
   }, []);
 
+  const locAbout = LOCALIZED_ABOUT[lang] || about;
+
   return (
-    <AppShell breadcrumbs={[{ label: 'Biz haqimizda' }]}>
+    <AppShell breadcrumbs={[{ label: t('nav.about') }]}>
       <div className="mx-auto max-w-5xl space-y-6 pb-8">
         {about.mode === 'html' && about.customHtml ? (
           <div
@@ -101,21 +140,19 @@ export default function About() {
                 <div>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1 text-[11.5px] font-bold backdrop-blur-md">
                     <Sparkles className="h-3.5 w-3.5" />
-                    {about.badge || 'Biz haqimizda'}
+                    {locAbout.badge || t('about.badge')}
                   </span>
                   <h1 className="mt-3 text-[28px] font-black leading-tight tracking-[-0.02em] md:text-[36px]">
-                    {about.title}
+                    {locAbout.title}
                   </h1>
                   <p className="mt-3 text-[14px] leading-relaxed text-white/85">
-                    {about.subtitle}
+                    {locAbout.subtitle}
                   </p>
                 </div>
 
                 <div className="relative flex aspect-[16/10] w-full flex-col items-center justify-center overflow-hidden rounded-[24px] border-2 border-dashed border-white/35 bg-white/10 p-6 text-center backdrop-blur-md">
                   <ImageIcon className="h-10 w-10 text-white/70" />
-                  <p className="mt-2 text-[13px] font-bold text-white">
-                    Platforma / Talabalar asosiy rasmi
-                  </p>
+                  <p className="mt-2 text-[13px] font-bold text-white">IMTIYO</p>
                   <span className="mt-0.5 text-[11px] text-white/70">1200 × 750 px</span>
                 </div>
               </div>
@@ -123,10 +160,10 @@ export default function About() {
 
             <section className="grid grid-cols-2 gap-3.5 md:grid-cols-4">
               {[
-                { icon: Users, value: '100 000+', label: 'Faol talabalar maqsadi' },
-                { icon: Building2, value: '50+', label: 'Hamkor brend va tarmoqlar' },
-                { icon: Award, value: '50% gacha', label: 'Eksklyuziv chegirmalar' },
-                { icon: ShieldCheck, value: '100% Bepul', label: 'Talabalar uchun obunasiz' },
+                { icon: Users, value: '100 000+', label: t('about.stat1') },
+                { icon: Building2, value: '50+', label: t('about.stat2') },
+                { icon: Award, value: t('about.discountValue'), label: t('about.stat3') },
+                { icon: ShieldCheck, value: t('about.freeValue'), label: t('about.stat4') },
               ].map((stat, idx) => {
                 const Icon = stat.icon;
                 return (
@@ -149,7 +186,7 @@ export default function About() {
             </section>
 
             <section className="grid gap-5 md:grid-cols-2">
-              {(about.sections || []).map((sec, idx) => (
+              {(locAbout.sections || []).map((sec, idx) => (
                 <div
                   key={idx}
                   className="flex flex-col justify-between rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90"

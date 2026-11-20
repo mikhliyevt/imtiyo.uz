@@ -42,7 +42,7 @@ export default function OfferCard({ offer, onClaim }) {
           <button
             type="button"
             onClick={handleToggleLike}
-            aria-label="Chegirmani saqlash"
+            aria-label={t('brand.saveOffer')}
             className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 bg-white text-[#08123A] shadow-sm transition-transform hover:scale-110 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           >
             <Heart

@@ -14,6 +14,7 @@ import {
   LogOut,
   Mail,
   MapPin,
+  Megaphone,
   Search,
   Send,
   Settings,
@@ -32,30 +33,15 @@ import PageTopGradient from '@/components/PageTopGradient';
 import PageBreadcrumb from '@/components/PageBreadcrumb';
 import AuthPromptCardModal from '@/components/AuthPromptCardModal';
 import MobileBottomDock from '@/components/MobileBottomDock';
+import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
+import { useScrollLock } from '@/lib/useScrollLock';
 import { api } from '@/services/api';
 import { brands as sampleBrands, offers as sampleOffers } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
 const READ_NOTIFS_KEY = 'imtiyo_read_notifications_v1';
 const DISMISSED_REJECT_BANNER_KEY = 'imtiyo_dismissed_reject_banner_v1';
-
-const BASE_NOTIFICATIONS = [
-  {
-    id: 'n-welcome',
-    type: 'info',
-    title: 'IMTIYO platformasiga xush kelibsiz! 🎉',
-    desc: 'Talabalik guvohnomangizni tasdiqlang va 50% gacha chegirmalardan foydalaning.',
-    time: 'Bugun',
-  },
-  {
-    id: 'n-partners',
-    type: 'info',
-    title: 'Yangi hamkor brendlar qo‘shildi 🔥',
-    desc: 'Xarita bo‘limida o‘zingizga eng yaqin filiallarni topishingiz mumkin.',
-    time: 'Kecha',
-  },
-];
 
 function readStringSet(key) {
   try {
@@ -84,12 +70,15 @@ export default function AppShell({
   hideSearch = false,
   breadcrumbs = null,
   showImtiyoAbout = false,
+  showAppPromo = false,
 }) {
   const navigate = useNavigate();
+  const { t, lang } = useLang();
   const { profile, signOut } = useStudent();
 
   const [allBrands, setAllBrands] = useState([]);
   const [allOffers, setAllOffers] = useState([]);
+  const [broadcasts, setBroadcasts] = useState([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -115,10 +104,19 @@ export default function AppShell({
   const [authPromptReason, setAuthPromptReason] = useState('default');
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
 
+  useScrollLock(savedModalOpen || showLogoutConfirm);
+
   const searchWrapRef = useRef(null);
   const mobileSearchWrapRef = useRef(null);
   const notifRef = useRef(null);
   const userMenuRef = useRef(null);
+
+  const loadBroadcasts = useCallback(() => {
+    api
+      .listBroadcastNotifications()
+      .then((list) => setBroadcasts(Array.isArray(list) ? list : []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -130,10 +128,25 @@ export default function AppShell({
       setAllBrands(Array.isArray(bList) && bList.length ? bList : sampleBrands);
       setAllOffers(Array.isArray(oList) && oList.length ? oList : sampleOffers);
     });
+    loadBroadcasts();
+
+    const onNotifsChanged = () => loadBroadcasts();
+    const onStorage = (e) => {
+      if (e.key === 'imtiyo_broadcast_notifications_v1' || e.key === null) {
+        loadBroadcasts();
+      }
+    };
+    window.addEventListener('imtiyo_notifications_changed', onNotifsChanged);
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', onNotifsChanged);
+
     return () => {
       active = false;
+      window.removeEventListener('imtiyo_notifications_changed', onNotifsChanged);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', onNotifsChanged);
     };
-  }, []);
+  }, [loadBroadcasts]);
 
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -349,43 +362,82 @@ export default function AppShell({
 
   const notifications = useMemo(() => {
     const list = [];
+    const isSignedIn = Boolean(profile?.signedIn);
 
-    if (profile?.signedIn) {
+    // 1. Talabalik statusi bildirishnomasi (admin ismi studentga ko'rsatilmaydi)
+    if (isSignedIn) {
       if (profile.status === 'rejected') {
         const reasonText =
-          (profile.rejection_reason || '').trim() ||
-          'Hujjat talabga javob bermaydi. Iltimos, aniqroq rasm yuklang.';
+          (profile.rejection_reason || '').trim() || t('notif.rejectedFallback');
         list.push({
           id: `status-rejected:${profile.id}:${reasonText}:${profile.reviewed_at || ''}`,
           type: 'rejected',
-          title: 'Talabalik hujjatingiz rad etildi',
-          desc: `Sabab: «${reasonText}»`,
-          meta: profile.reviewed_by ? `Tekshirdi: ${profile.reviewed_by}` : '',
-          time: 'Yangi',
-          actionLabel: 'Hujjatni qayta yuklash',
+          title: t('notif.rejectedTitle'),
+          desc: `${t('notif.rejectedReasonPrefix')} «${reasonText}»`,
+          time: t('common.new'),
+          actionLabel: t('notif.reupload'),
           actionType: 'reupload',
         });
       } else if (profile.status === 'verified') {
         list.push({
           id: `status-verified:${profile.id}:${profile.reviewed_at || ''}`,
           type: 'verified',
-          title: 'Talabalik statusingiz tasdiqlandi! 🎉',
-          desc: 'Endi barcha IMTIYO hamkor chegirmalari va promo-kodlaridan foydalanishingiz mumkin.',
-          meta: profile.reviewed_by ? `Tasdiqladi: ${profile.reviewed_by}` : '',
-          time: 'Faol',
+          title: t('notif.verifiedTitle'),
+          desc: t('notif.verifiedDesc'),
+          time: t('common.active'),
         });
       } else if (profile.status === 'pending') {
         list.push({
           id: `status-pending:${profile.id}:${profile.submitted_date || ''}`,
           type: 'pending',
-          title: 'Hujjatingiz tekshirilmoqda ⏳',
-          desc: 'Moderatorlarimiz talabalik hujjatingizni ko‘rib chiqmoqda. Natija shu yerda ko‘rinadi.',
-          time: 'Jarayonda',
+          title: t('notif.pendingTitle'),
+          desc: t('notif.pendingDesc'),
+          time: t('notif.inProgress'),
         });
       }
     }
 
-    BASE_NOTIFICATIONS.forEach((item) => list.push(item));
+    // 2. Admin tomonidan yuborilgan maqsadli (registered / guest / all) bildirishnomalar
+    broadcasts.forEach((b) => {
+      if (!b || !b.title) return;
+      const aud = b.audience || 'all';
+      const matchesAudience =
+        aud === 'all' ||
+        (aud === 'registered' && isSignedIn) ||
+        (aud === 'guest' && !isSignedIn);
+      if (!matchesAudience) return;
+      const dateStr = b.created_at
+        ? new Date(b.created_at).toLocaleDateString(
+            lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-US' : 'uz-UZ',
+            { day: '2-digit', month: 'short' }
+          )
+        : t('notif.today');
+      list.push({
+        id: `broadcast:${b.id}`,
+        type: b.tone === 'alert' ? 'rejected' : b.tone === 'promo' ? 'broadcast' : 'broadcast',
+        title: b.title,
+        desc: b.message,
+        time: dateStr,
+      });
+    });
+
+    // 3. Asosiy tizim bildirishnomalari
+    list.push(
+      {
+        id: 'n-welcome',
+        type: 'info',
+        title: t('notif.welcomeTitle'),
+        desc: t('notif.welcomeDesc'),
+        time: t('notif.today'),
+      },
+      {
+        id: 'n-partners',
+        type: 'info',
+        title: t('notif.partnersTitle'),
+        desc: t('notif.partnersDesc'),
+        time: t('notif.yesterday'),
+      }
+    );
 
     return list.map((item) => ({
       ...item,
@@ -396,10 +448,12 @@ export default function AppShell({
     profile?.id,
     profile?.status,
     profile?.rejection_reason,
-    profile?.reviewed_by,
     profile?.reviewed_at,
     profile?.submitted_date,
+    broadcasts,
     readNotifIds,
+    lang,
+    t,
   ]);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
@@ -446,12 +500,12 @@ export default function AppShell({
   const renderSearchDropdown = () => (
     <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[420px] overflow-y-auto rounded-[24px] border border-slate-200/95 bg-white/95 p-3 shadow-[0_28px_70px_-15px_rgba(8,18,58,0.28)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_28px_70px_-15px_rgba(0,0,0,0.75)]">
       <p className="px-3 pb-2 pt-1 text-[12px] font-extrabold text-[#08123A] dark:text-slate-100">
-        {searchQuery.trim() ? 'Qidiruv natijalari' : 'Tavsiya etilganlar (Recommended)'}
+        {searchQuery.trim() ? t('header.searchResults') : t('header.recommended')}
       </p>
 
       {searchResults.length === 0 ? (
         <div className="py-8 text-center text-[13px] font-semibold text-slate-400">
-          Hech narsa topilmadi
+          {t('header.nothingFound')}
         </div>
       ) : (
         <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -500,9 +554,9 @@ export default function AppShell({
   return (
     <div className="relative flex min-h-screen w-full flex-col bg-white text-[#08123A] pb-24 transition-colors duration-200 dark:bg-[#070d1f] dark:text-slate-100 md:pb-0">
       {/* =========================================================
-          GLASSMORPHISM HEADER (Logo oval ichida + barcha elementlar glass)
+          GLASSMORPHISM HEADER (Yengil tiniq blur + glass pill elementlar)
       ========================================================= */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/85 bg-white/75 backdrop-blur-2xl shadow-[0_8px_32px_-14px_rgba(0,45,150,0.14)] dark:border-white/10 dark:bg-[#0B1228]/75 dark:shadow-[0_10px_34px_-14px_rgba(0,0,0,0.6)]">
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/55 backdrop-blur-md shadow-[0_8px_28px_-14px_rgba(0,45,150,0.12)] dark:border-white/10 dark:bg-[#0B1228]/58 dark:shadow-[0_10px_34px_-14px_rgba(0,0,0,0.55)]">
         <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-2.5 px-3.5 py-2.5 sm:gap-3.5 sm:px-6 md:px-8">
           {/* LOGO OVAL ICHIDA (Glassmorphism) */}
           <Link
@@ -531,14 +585,14 @@ export default function AppShell({
                     setSearchQuery(e.target.value);
                     setSearchOpen(true);
                   }}
-                  placeholder="Hamkor brend yoki chegirma qidiring..."
+                  placeholder={t('header.searchPlaceholder')}
                   className="h-full w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none placeholder:font-medium placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    aria-label="Tozalash"
+                    aria-label={t('common.clear')}
                     className="grid h-6 w-6 place-items-center rounded-full bg-slate-200/70 text-slate-600 hover:bg-slate-200 dark:bg-slate-700/80 dark:text-slate-200"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -561,7 +615,7 @@ export default function AppShell({
                 refreshLikes();
                 setSavedModalOpen(true);
               }}
-              aria-label="Saqlanganlar"
+              aria-label={t('header.savedTitle')}
               className="imtiyo-glass-pill relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
             >
               <Heart className="h-[18px] w-[18px] fill-transparent text-current" />
@@ -580,7 +634,7 @@ export default function AppShell({
                   setNotifOpen((v) => !v);
                   if (!notifOpen) markAllRead();
                 }}
-                aria-label="Bildirishnomalar"
+                aria-label={t('header.notifications')}
                 className="imtiyo-glass-pill relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#08123A] hover:scale-105 dark:text-slate-100"
               >
                 <Bell className="h-[18px] w-[18px] text-current" />
@@ -600,10 +654,10 @@ export default function AppShell({
                 <div className="absolute right-0 mt-2 w-80 sm:w-96 overflow-hidden rounded-[24px] border border-slate-200/95 bg-white/95 p-3.5 shadow-[0_24px_60px_-15px_rgba(0,45,150,0.35)] backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]">
                   <div className="mb-2.5 flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
                     <span className="text-[13px] font-extrabold text-[#08123A] dark:text-white">
-                      Bildirishnomalar
+                      {t('header.notifications')}
                     </span>
                     <span className="rounded-full bg-[#1D6FF2]/10 px-2.5 py-0.5 text-[10px] font-bold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
-                      Ilova xabarlari
+                      {t('header.appMessages')}
                     </span>
                   </div>
                   <ul className="max-h-80 space-y-2 overflow-y-auto">
@@ -618,7 +672,9 @@ export default function AppShell({
                               ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-500/30 dark:bg-emerald-950/35'
                               : n.type === 'pending'
                                 ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-950/35'
-                                : 'border-slate-100 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-800/70'
+                                : n.type === 'broadcast'
+                                  ? 'border-[#1D6FF2]/25 bg-[#1D6FF2]/[0.06] dark:border-sky-500/30 dark:bg-sky-500/10'
+                                  : 'border-slate-100 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-800/70'
                         )}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -631,6 +687,9 @@ export default function AppShell({
                             )}
                             {n.type === 'pending' && (
                               <Clock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            )}
+                            {n.type === 'broadcast' && (
+                              <Megaphone className="h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
                             )}
                             <p
                               className={cn(
@@ -659,11 +718,6 @@ export default function AppShell({
                         >
                           {n.desc}
                         </p>
-                        {n.meta && (
-                          <p className="mt-1 text-[10.5px] font-semibold text-slate-500 dark:text-slate-400">
-                            {n.meta}
-                          </p>
-                        )}
                         {n.actionType === 'reupload' && (
                           <div className="mt-2.5 flex flex-wrap gap-2">
                             <button
@@ -685,7 +739,7 @@ export default function AppShell({
                               }}
                               className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-slate-900 dark:text-rose-300"
                             >
-                              Statusni ko‘rish
+                              {t('notif.viewStatus')}
                             </button>
                           </div>
                         )}
@@ -762,7 +816,7 @@ export default function AppShell({
                         className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <User className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
-                        <span>Mening profilim</span>
+                        <span>{t('nav.myProfile')}</span>
                       </button>
 
                       <button
@@ -774,19 +828,19 @@ export default function AppShell({
                         className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <Settings className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
-                        <span>Sozlamalar</span>
+                        <span>{t('header.settings')}</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => {
                           setUserMenuOpen(false);
-                          navigate('/profile#codes');
+                          navigate('/profile?tab=codes');
                         }}
                         className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <Ticket className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
-                        <span>Promo kodlarim</span>
+                        <span>{t('header.promoCodes')}</span>
                       </button>
 
                       <button
@@ -798,7 +852,7 @@ export default function AppShell({
                         className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#08123A] hover:bg-slate-100/80 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <Info className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
-                        <span>Biz haqimizda</span>
+                        <span>{t('nav.about')}</span>
                       </button>
 
                       <a
@@ -810,7 +864,7 @@ export default function AppShell({
                       >
                         <span className="flex items-center gap-2.5">
                           <HelpCircle className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
-                          <span>Yordam (Help)</span>
+                          <span>{t('nav.help')}</span>
                         </span>
                         <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
                       </a>
@@ -826,7 +880,7 @@ export default function AppShell({
                         className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
                       >
                         <LogOut className="h-4 w-4" />
-                        <span>Chiqish</span>
+                        <span>{t('header.logout')}</span>
                       </button>
                     </div>
                   </div>
@@ -838,13 +892,13 @@ export default function AppShell({
                   to="/welcome?mode=signin"
                   className="imtiyo-glass-pill hidden h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-extrabold text-[#08123A] hover:text-[#002D96] dark:text-slate-100 dark:hover:text-sky-300 lg:inline-flex"
                 >
-                  Kirish
+                  {t('header.login')}
                 </Link>
                 <Link
                   to="/welcome?mode=signup"
                   className="inline-flex h-10 min-w-[138px] shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-gradient-to-r from-[#002D96] via-[#1D6FF2] to-[#00A9FF] px-5 text-[12.5px] font-extrabold leading-none text-white shadow-[0_10px_24px_-10px_rgba(0,45,150,0.85)] transition-all hover:scale-[1.02] hover:brightness-105 sm:min-w-[158px] sm:px-6 sm:text-[13px]"
                 >
-                  Ro‘yxatdan o‘tish
+                  {t('header.signup')}
                 </Link>
               </div>
             )}
@@ -870,7 +924,7 @@ export default function AppShell({
                   setSearchQuery(e.target.value);
                   setSearchOpen(true);
                 }}
-                placeholder="Hamkor brend yoki chegirma qidiring..."
+                placeholder={t('header.searchPlaceholder')}
                 className="h-full w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none placeholder:font-medium placeholder:text-slate-400 dark:text-slate-100"
               />
               {searchQuery && (
@@ -900,19 +954,12 @@ export default function AppShell({
               <div className="flex min-w-0 flex-1 items-start gap-2.5">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
                 <div className="min-w-0 text-[12.5px]">
-                  <p className="font-extrabold">
-                    Talabalik hujjatingiz rad etildi
-                  </p>
+                  <p className="font-extrabold">{t('notif.rejectedTitle')}</p>
                   <p className="mt-0.5 font-semibold leading-snug">
-                    Sabab:{' '}
+                    {t('notif.rejectedReasonPrefix')}{' '}
                     <span className="font-extrabold">
-                      «{profile.rejection_reason || 'Hujjat talabga javob bermaydi. Iltimos, aniqroq rasm yuklang.'}»
+                      «{profile.rejection_reason || t('notif.rejectedFallback')}»
                     </span>
-                    {profile.reviewed_by && (
-                      <span className="ml-2 text-[11px] font-medium opacity-75">
-                        ({profile.reviewed_by})
-                      </span>
-                    )}
                   </p>
                 </div>
               </div>
@@ -924,12 +971,12 @@ export default function AppShell({
                   className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3.5 py-1.5 text-[11.5px] font-extrabold text-white shadow-sm transition-colors hover:bg-rose-700"
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  Qayta yuklash
+                  {t('notif.reuploadShort')}
                 </button>
                 <button
                   type="button"
                   onClick={dismissRejectionBanner}
-                  aria-label="Yopish"
+                  aria-label={t('common.close')}
                   className="grid h-7 w-7 place-items-center rounded-full text-rose-600/80 hover:bg-rose-200/60 dark:text-rose-300 dark:hover:bg-rose-900/60"
                 >
                   <X className="h-4 w-4" />
@@ -948,130 +995,125 @@ export default function AppShell({
       </div>
 
       {/* =========================================================
-          "IMTIYO NIMA?" — FAQAT KATEGORIYA SAHIFALARI TAGIDA CHIQADI
+          "IMTIYO NIMA?" (kategoriya sahifalari) + APP PROMO (faqat bosh sahifa)
       ========================================================= */}
       <div className="relative z-10 mt-16">
         {showImtiyoAbout && (
           <div className="mx-auto w-full max-w-[1440px] px-4 pb-12 md:px-8">
             <div className="rounded-[24px] border border-[#1D6FF2]/15 bg-gradient-to-br from-[#EEF4FF] via-[#F3EEFF] to-[#FFF4F0] p-7 shadow-sm dark:border-slate-700/60 dark:from-slate-900 dark:via-[#0F1B3A] dark:to-slate-900 md:p-9">
               <h2 className="text-[20px] font-extrabold text-[#08123A] dark:text-white">
-                IMTIYO nima?
+                {t('footer.whatIsImtiyo')}
               </h2>
               <p className="mt-3 text-[14px] leading-relaxed font-medium text-slate-700 dark:text-slate-300">
-                <strong>IMTIYO</strong> — O‘zbekistondagi oliy va o‘rta-maxsus ta’lim muassasalari
-                talabalari uchun mo‘ljallangan imtiyozlar va eksklyuziv chegirmalar platformasi. Biz
-                100 dan ortiq yetakchi brendlar bilan hamkorlik qilib, texnologiya, taomlar,
-                kiyim-kechak, ta’lim, sport va ko‘ngilochar maskanlarda eng yaxshi takliflarni
-                taqdim etamiz.
+                {t('footer.aboutP1')}
               </p>
               <p className="mt-3 text-[14px] leading-relaxed font-medium text-slate-700 dark:text-slate-300">
-                Bizning maqsadimiz — talabalarga o‘zlari sevgan mahsulot va xizmatlardan foydalanishda
-                mablag‘larini tejashga yordam berishdir. Har kuni yangi talaba chegirmalarini qo‘shib
-                boramiz, shunda siz doimo eng foydali aksiyalardan birinchi bo‘lib foydalanasiz.
+                {t('footer.aboutP2')}
               </p>
               <p className="mt-3 text-[14px] font-bold text-[#002D96] dark:text-sky-300">
-                IMTIYO orqali tejayotgan minglab faol talabalar safiga qo‘shiling!
+                {t('footer.aboutCta')}
               </p>
             </div>
           </div>
         )}
 
-        {/* APP PROMO BANNER */}
-        <section className="relative overflow-hidden bg-gradient-to-r from-[#002D96] via-[#1E1B4B] to-[#0B1228] text-white">
-          <div className="mx-auto grid max-w-[1440px] grid-cols-1 items-center gap-8 px-4 py-12 md:grid-cols-12 md:px-8">
-            <div className="space-y-4 md:col-span-7">
-              <h2 className="text-[26px] font-black leading-tight md:text-[34px]">
-                IMTIYO mobil ilovasini yuklab oling!
-              </h2>
-              <p className="max-w-lg text-[14.5px] text-white/85">
-                Maxsus talaba chegirmalari va yangi promo-kodlar haqida bildirishnomalarni
-                to‘g‘ridan-to‘g‘ri telefoningizda qabul qiling!
-              </p>
+        {/* APP PROMO BANNER — FAQAT BOSH SAHIFADA CHIQADI */}
+        {showAppPromo && (
+          <section className="relative overflow-hidden bg-gradient-to-r from-[#002D96] via-[#1E1B4B] to-[#0B1228] text-white">
+            <div className="mx-auto grid max-w-[1440px] grid-cols-1 items-center gap-8 px-4 py-12 md:grid-cols-12 md:px-8">
+              <div className="space-y-4 md:col-span-7">
+                <h2 className="text-[26px] font-black leading-tight md:text-[34px]">
+                  {t('footer.appPromoTitle')}
+                </h2>
+                <p className="max-w-lg text-[14.5px] text-white/85">
+                  {t('footer.appPromoSubtitle')}
+                </p>
 
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <a
-                  href="#google-play"
-                  onClick={(e) => e.preventDefault()}
-                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 px-4 py-2.5 text-left transition-transform hover:scale-105"
-                >
-                  <span className="text-[20px]">▶️</span>
-                  <div>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-white/70">
-                      GET IT ON
-                    </p>
-                    <p className="text-[14px] font-extrabold leading-none">Google Play</p>
-                  </div>
-                </a>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <a
+                    href="#google-play"
+                    onClick={(e) => e.preventDefault()}
+                    className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 px-4 py-2.5 text-left transition-transform hover:scale-105"
+                  >
+                    <span className="text-[20px]">▶️</span>
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-white/70">
+                        GET IT ON
+                      </p>
+                      <p className="text-[14px] font-extrabold leading-none">Google Play</p>
+                    </div>
+                  </a>
 
-                <a
-                  href="#app-store"
-                  onClick={(e) => e.preventDefault()}
-                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 px-4 py-2.5 text-left transition-transform hover:scale-105"
-                >
-                  <span className="text-[20px]"></span>
-                  <div>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-white/70">
-                      Download on the
-                    </p>
-                    <p className="text-[14px] font-extrabold leading-none">App Store</p>
-                  </div>
-                </a>
-              </div>
-
-              <div className="inline-flex flex-col rounded-2xl border border-white/15 bg-white/10 px-4 py-2.5 backdrop-blur-md">
-                <span className="text-[11px] font-semibold text-white/85">
-                  O‘rtacha ilova reytingi
-                </span>
-                <div className="mt-0.5 flex items-center gap-1.5">
-                  <span className="text-[16px] font-black">5.0</span>
-                  <div className="flex text-amber-400">
-                    <Star className="h-4 w-4 fill-amber-400" />
-                    <Star className="h-4 w-4 fill-amber-400" />
-                    <Star className="h-4 w-4 fill-amber-400" />
-                    <Star className="h-4 w-4 fill-amber-400" />
-                    <Star className="h-4 w-4 fill-amber-400" />
-                  </div>
+                  <a
+                    href="#app-store"
+                    onClick={(e) => e.preventDefault()}
+                    className="inline-flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 px-4 py-2.5 text-left transition-transform hover:scale-105"
+                  >
+                    <span className="text-[20px]"></span>
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-white/70">
+                        Download on the
+                      </p>
+                      <p className="text-[14px] font-extrabold leading-none">App Store</p>
+                    </div>
+                  </a>
                 </div>
-              </div>
-            </div>
 
-            <div className="hidden justify-center gap-5 md:col-span-5 md:flex">
-              <div className="w-48 rounded-[32px] border-[6px] border-slate-900 bg-white p-3 text-[#08123A] shadow-2xl">
-                <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-slate-900" />
-                <p className="text-[12px] font-black text-[#002D96]">imtiyo</p>
-                <div className="mt-2 h-24 rounded-2xl bg-gradient-to-br from-[#002D96] to-[#1D6FF2] p-2.5 text-white">
-                  <span className="rounded bg-white/20 px-1.5 py-0.5 text-[8px] font-bold">
-                    -30% Talaba
+                <div className="inline-flex flex-col rounded-2xl border border-white/15 bg-white/10 px-4 py-2.5 backdrop-blur-md">
+                  <span className="text-[11px] font-semibold text-white/85">
+                    {t('footer.appRating')}
                   </span>
-                  <p className="mt-4 text-[10px] font-extrabold">Eksklyuziv chegirmalar</p>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold text-[#08123A]">
-                    EVOS
-                  </div>
-                  <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold text-[#08123A]">
-                    Safia
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <span className="text-[16px] font-black">5.0</span>
+                    <div className="flex text-amber-400">
+                      <Star className="h-4 w-4 fill-amber-400" />
+                      <Star className="h-4 w-4 fill-amber-400" />
+                      <Star className="h-4 w-4 fill-amber-400" />
+                      <Star className="h-4 w-4 fill-amber-400" />
+                      <Star className="h-4 w-4 fill-amber-400" />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="-mt-6 w-48 rounded-[32px] border-[6px] border-slate-900 bg-white p-3 text-[#08123A] shadow-2xl">
-                <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-slate-900" />
-                <div className="grid grid-cols-2 gap-1.5">
-                  <div className="h-20 rounded-xl bg-orange-500/15 p-2 text-[9px] font-bold text-orange-800">
-                    -25% Taomlar
+              <div className="hidden justify-center gap-5 md:col-span-5 md:flex">
+                <div className="w-48 rounded-[32px] border-[6px] border-slate-900 bg-white p-3 text-[#08123A] shadow-2xl">
+                  <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-slate-900" />
+                  <p className="text-[12px] font-black text-[#002D96]">imtiyo</p>
+                  <div className="mt-2 h-24 rounded-2xl bg-gradient-to-br from-[#002D96] to-[#1D6FF2] p-2.5 text-white">
+                    <span className="rounded bg-white/20 px-1.5 py-0.5 text-[8px] font-bold">
+                      -30% Student
+                    </span>
+                    <p className="mt-4 text-[10px] font-extrabold">{t('app.tagline')}</p>
                   </div>
-                  <div className="h-20 rounded-xl bg-emerald-500/15 p-2 text-[9px] font-bold text-emerald-800">
-                    1Fit Bonus
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold text-[#08123A]">
+                      EVOS
+                    </div>
+                    <div className="h-14 rounded-xl bg-slate-100 p-2 text-[9px] font-bold text-[#08123A]">
+                      Safia
+                    </div>
                   </div>
                 </div>
-                <div className="mt-2 h-24 rounded-2xl bg-slate-100 p-2.5 text-[9.5px] font-extrabold text-[#002D96]">
-                  Raqamli Talaba ID kartasi
+
+                <div className="-mt-6 w-48 rounded-[32px] border-[6px] border-slate-900 bg-white p-3 text-[#08123A] shadow-2xl">
+                  <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-slate-900" />
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="h-20 rounded-xl bg-orange-500/15 p-2 text-[9px] font-bold text-orange-800">
+                      -25% {t('cat.food')}
+                    </div>
+                    <div className="h-20 rounded-xl bg-emerald-500/15 p-2 text-[9px] font-bold text-emerald-800">
+                      1Fit Bonus
+                    </div>
+                  </div>
+                  <div className="mt-2 h-24 rounded-2xl bg-slate-100 p-2.5 text-[9.5px] font-extrabold text-[#002D96]">
+                    {t('card.title')}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* DARK FOOTER */}
         <footer className="border-t border-white/10 bg-[#070B18] text-white">
@@ -1080,16 +1122,18 @@ export default function AppShell({
               <div>
                 <span className="text-[24px] font-black tracking-tight text-white">imtiyo</span>
                 <p className="mt-2.5 max-w-xs text-[13px] leading-relaxed text-white/70">
-                  Talabalik chegirmalaringiz va imtiyozlaringiz bitta yagona platformada.
+                  {t('footer.brandDesc')}
                 </p>
               </div>
 
               <div>
-                <h3 className="text-[13.5px] font-extrabold text-white">Bog‘lanish</h3>
+                <h3 className="text-[13.5px] font-extrabold text-white">
+                  {t('footer.contactTitle')}
+                </h3>
                 <ul className="mt-3 space-y-2 text-[12.5px] text-white/75">
                   <li className="flex items-start gap-2">
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
-                    <span>Toshkent shahri, O‘zbekiston</span>
+                    <span>{t('footer.city')}</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Mail className="h-4 w-4 shrink-0 text-white/50" />
@@ -1110,11 +1154,13 @@ export default function AppShell({
               </div>
 
               <div>
-                <h3 className="text-[13.5px] font-extrabold text-white">Muhim havolalar</h3>
+                <h3 className="text-[13.5px] font-extrabold text-white">
+                  {t('footer.importantLinks')}
+                </h3>
                 <ul className="mt-3 space-y-2 text-[12.5px] text-white/75">
                   <li>
                     <Link to="/about" className="hover:text-white hover:underline">
-                      Biz haqimizda
+                      {t('nav.about')}
                     </Link>
                   </li>
                   <li>
@@ -1124,20 +1170,22 @@ export default function AppShell({
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 hover:text-white hover:underline"
                     >
-                      <span>Hamkorlar va Yordam (FAQ)</span>
+                      <span>{t('nav.helpFaq')}</span>
                       <ExternalLink className="h-3 w-3 opacity-60" />
                     </a>
                   </li>
                   <li>
                     <Link to="/map" className="hover:text-white hover:underline">
-                      Filiallar xaritasi
+                      {t('nav.mapFull')}
                     </Link>
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-[13.5px] font-extrabold text-white">Hujjatlar</h3>
+                <h3 className="text-[13.5px] font-extrabold text-white">
+                  {t('footer.documents')}
+                </h3>
                 <ul className="mt-3 space-y-2 text-[12.5px] text-white/75">
                   <li>
                     <a
@@ -1146,7 +1194,7 @@ export default function AppShell({
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 hover:text-white hover:underline"
                     >
-                      <span>Foydalanish shartlari</span>
+                      <span>{t('nav.terms')}</span>
                       <ExternalLink className="h-3 w-3 opacity-60" />
                     </a>
                   </li>
@@ -1157,7 +1205,7 @@ export default function AppShell({
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 hover:text-white hover:underline"
                     >
-                      <span>Maxfiylik siyosati</span>
+                      <span>{t('nav.privacy')}</span>
                       <ExternalLink className="h-3 w-3 opacity-60" />
                     </a>
                   </li>
@@ -1168,7 +1216,7 @@ export default function AppShell({
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 hover:text-white hover:underline"
                     >
-                      <span>Ko‘p beriladigan savollar</span>
+                      <span>{t('nav.faq')}</span>
                       <ExternalLink className="h-3 w-3 opacity-60" />
                     </a>
                   </li>
@@ -1177,7 +1225,7 @@ export default function AppShell({
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6 text-[12px] text-white/60">
-              <p>© 2026 IMTIYO. Barcha huquqlar himoyalangan.</p>
+              <p>{t('footer.rights')}</p>
               <div className="flex items-center gap-4">
                 <a
                   href="https://t.me/imtiyosupport_bot"
@@ -1200,29 +1248,30 @@ export default function AppShell({
         </footer>
       </div>
 
-      {/* MOBIL PASTKI LIQUID GLASS DOCK (Faqat mobile users uchun) */}
+      {/* MOBIL PASTKI LIQUID GLASS DOCK */}
       <MobileBottomDock />
 
       {/* SAQLANGANLAR MODALI */}
       {savedModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#08123A]/60 p-4 backdrop-blur-sm"
           onClick={() => setSavedModalOpen(false)}
         >
           <div
-            className="max-h-[84vh] w-full max-w-md overflow-y-auto rounded-[28px] border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700/70 dark:bg-slate-900"
+            className="max-h-[84vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-[28px] border border-slate-200/90 bg-white p-5 shadow-2xl dark:border-slate-700/70 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <Heart className="h-5 w-5 text-[#1D6FF2] dark:text-sky-400" />
                 <h3 className="text-[16px] font-extrabold text-[#08123A] dark:text-white">
-                  Saqlanganlar ({savedItems.length})
+                  {t('header.savedTitle')} ({savedItems.length})
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSavedModalOpen(false)}
+                aria-label={t('common.close')}
                 className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
               >
                 <X className="h-4 w-4" />
@@ -1233,10 +1282,10 @@ export default function AppShell({
               <div className="py-10 text-center">
                 <Heart className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
                 <p className="mt-2 text-[13.5px] font-extrabold text-[#08123A] dark:text-white">
-                  Hozircha saqlangan chegirmalar yo‘q
+                  {t('header.savedEmpty')}
                 </p>
                 <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                  Yoqqan chegirma yoki brend ustidagi yurakcha tugmasini bosing.
+                  {t('header.savedEmptyHint')}
                 </p>
               </div>
             ) : (
@@ -1294,7 +1343,7 @@ export default function AppShell({
                         api.toggleLike(item.likeId);
                         refreshLikes();
                       }}
-                      title="O‘chirish"
+                      title={t('common.delete')}
                       className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-500 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-rose-950/60 dark:hover:text-rose-400"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1307,7 +1356,7 @@ export default function AppShell({
         </div>
       )}
 
-      {/* GUEST / UNVERIFIED AUTH PROMPT CARD MODAL (Uiverse MuhammadHasann) */}
+      {/* GUEST / UNVERIFIED AUTH PROMPT CARD MODAL */}
       <AuthPromptCardModal
         open={authPromptOpen}
         reason={authPromptReason}
@@ -1321,18 +1370,18 @@ export default function AppShell({
       {/* CHIQISHNI TASDIQLASH MODALI */}
       {showLogoutConfirm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/55 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#08123A]/55 p-4 backdrop-blur-sm"
           onClick={() => setShowLogoutConfirm(false)}
         >
           <div
-            className="w-full max-w-sm rounded-[26px] border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            className="w-full max-w-sm rounded-[26px] border border-slate-200/90 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-[16px] font-extrabold text-[#08123A] dark:text-white">
-              Tizimdan chiqish
+              {t('header.logoutTitle')}
             </h3>
             <p className="mt-1.5 text-[13px] text-slate-600 dark:text-slate-300">
-              Haqiqatan ham tizimdan chiqmoqchimisiz?
+              {t('header.logoutConfirm')}
             </p>
             <div className="mt-5 flex gap-2.5">
               <button
@@ -1340,14 +1389,14 @@ export default function AppShell({
                 onClick={() => setShowLogoutConfirm(false)}
                 className="flex-1 rounded-full border border-slate-200 bg-white py-2.5 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
-                Yo‘q
+                {t('common.no')}
               </button>
               <button
                 type="button"
                 onClick={handleConfirmLogout}
                 className="flex-1 rounded-full bg-rose-500 py-2.5 text-[12.5px] font-bold text-white hover:bg-rose-600"
               >
-                Ha, chiqish
+                {t('header.logoutYes')}
               </button>
             </div>
           </div>

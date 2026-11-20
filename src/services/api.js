@@ -14,7 +14,10 @@ const STORAGE_KEYS = {
   OFFER_EXTRAS: 'imtiyo_offer_extras_v1',
   PROFILE_REVIEWS: 'imtiyo_profile_reviews_v1',
   PROFILE_EXTRAS: 'imtiyo_profile_extras_v1',
+  LOCAL_PROFILES: 'imtiyo_local_profiles_v1',
   ADMIN_PERMISSIONS: 'imtiyo_admin_permissions_v1',
+  SUPPORT_MESSAGES: 'imtiyo_support_messages_v1',
+  BROADCAST_NOTIFICATIONS: 'imtiyo_broadcast_notifications_v1',
 };
 
 export const COURSE_OPTIONS = ['1', '2', '3', '4', '5', '6'];
@@ -100,6 +103,8 @@ export const ADMIN_PERMISSION_LIST = [
   { id: 'deals', label: 'Brend va e’lonlar' },
   { id: 'categories', label: 'Kategoriyalar' },
   { id: 'universities', label: 'Universitetlar' },
+  { id: 'messages', label: 'Xabarlar (Yordam / Shikoyatlar)' },
+  { id: 'notifications', label: 'Bildirishnomalar yuborish' },
 ];
 
 export const DEFAULT_FAQ_ITEMS = [
@@ -1222,6 +1227,9 @@ export const api = {
   },
 
   async findProfile({ id = '', email = '', phone = '' } = {}) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const digits = String(phone || '').replace(/\D/g, '').slice(-9);
+
     try {
       if (id) {
         const { data } = await supabase
@@ -1231,7 +1239,6 @@ export const api = {
           .maybeSingle();
         if (data) return mapProfile(data);
       }
-      const cleanEmail = String(email || '').trim().toLowerCase();
       if (cleanEmail) {
         const { data } = await supabase
           .from('profiles')
@@ -1241,7 +1248,6 @@ export const api = {
           .maybeSingle();
         if (data) return mapProfile(data);
       }
-      const digits = String(phone || '').replace(/\D/g, '').slice(-9);
       if (digits.length === 9) {
         const { data } = await supabase
           .from('profiles')
@@ -1256,17 +1262,35 @@ export const api = {
         }
       }
     } catch {
-      /* fallback */
+      /* fallback to local cache */
+    }
+
+    // Fallback: lokal profillar keshidan qidirish (offline / demo rejimda ham ishlaydi)
+    const localList = readLocal(STORAGE_KEYS.LOCAL_PROFILES, []);
+    if (Array.isArray(localList) && localList.length > 0) {
+      const hit = localList.find((p) => {
+        if (!p) return false;
+        if (id && String(p.id) === String(id)) return true;
+        if (cleanEmail && String(p.email || '').trim().toLowerCase() === cleanEmail) return true;
+        if (digits.length === 9 && String(p.phone || '').replace(/\D/g, '').slice(-9) === digits) {
+          return true;
+        }
+        return false;
+      });
+      if (hit) return mapProfile(hit);
     }
     return null;
   },
 
   async listProfiles() {
+    const localList = readLocal(STORAGE_KEYS.LOCAL_PROFILES, []);
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
-    if (error || !data) return [];
+    if (error || !data) {
+      return Array.isArray(localList) ? localList.map(mapProfile) : [];
+    }
     return data.map(mapProfile);
   },
 
@@ -1295,6 +1319,13 @@ export const api = {
       last_login: now,
       rejection_reason: '',
     };
+
+    // Lokal profillar keshiga ham yozib qo'yish (takroriy ro'yxatdan o'tishni bloklash va offline rejim uchun)
+    const localList = readLocal(STORAGE_KEYS.LOCAL_PROFILES, []);
+    writeLocal(STORAGE_KEYS.LOCAL_PROFILES, [
+      record,
+      ...(Array.isArray(localList) ? localList.filter((p) => p?.id !== id) : []),
+    ]);
 
     if (courseStr) {
       const extrasMap = readLocal(STORAGE_KEYS.PROFILE_EXTRAS, {});
@@ -1334,6 +1365,19 @@ export const api = {
       delete payload.name;
     } else if ('name' in payload) {
       delete payload.name;
+    }
+
+    // Lokal profillar keshini ham sinxron yangilab borish
+    try {
+      const localList = readLocal(STORAGE_KEYS.LOCAL_PROFILES, []);
+      if (Array.isArray(localList) && localList.some((p) => String(p?.id) === String(id))) {
+        writeLocal(
+          STORAGE_KEYS.LOCAL_PROFILES,
+          localList.map((p) => (String(p?.id) === String(id) ? { ...p, ...payload } : p))
+        );
+      }
+    } catch {
+      /* ignore */
     }
 
     if ('course' in payload) {
@@ -1609,7 +1653,16 @@ export const api = {
   getAdminPermissions(adminObj) {
     if (!adminObj) return [];
     if (this.isSuperAdmin(adminObj)) {
-      return ['stats', 'students', 'deals', 'categories', 'universities', 'admins'];
+      return [
+        'stats',
+        'students',
+        'deals',
+        'categories',
+        'universities',
+        'messages',
+        'notifications',
+        'admins',
+      ];
     }
     const permMap = readLocal(STORAGE_KEYS.ADMIN_PERMISSIONS, {});
     if (Array.isArray(adminObj.permissions) && adminObj.permissions.length > 0) {
@@ -1673,7 +1726,16 @@ export const api = {
       ...a,
       isSuper: this.isSuperAdmin(a),
       permissions: this.isSuperAdmin(a)
-        ? ['stats', 'students', 'deals', 'categories', 'universities', 'admins']
+        ? [
+            'stats',
+            'students',
+            'deals',
+            'categories',
+            'universities',
+            'messages',
+            'notifications',
+            'admins',
+          ]
         : a.permissions || permMap[a.login] || ['stats', 'students'],
     }));
   },
@@ -1731,6 +1793,182 @@ export const api = {
     const target = all.find((a) => a.id === id);
     if (!target || this.isSuperAdmin(target)) return false;
     await supabase.from('admins').delete().eq('id', id);
+    return true;
+  },
+
+  // --- SUPPORT / HELP MESSAGES (Talabalar yordam & shikoyatlari -> Admin) ---
+  async listSupportMessages() {
+    const localList = readLocal(STORAGE_KEYS.SUPPORT_MESSAGES, []);
+    try {
+      const { data, error } = await supabase
+        .from('support_messages')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        const mergedMap = new Map();
+        data.forEach((m) => mergedMap.set(m.id, m));
+        (Array.isArray(localList) ? localList : []).forEach((m) => {
+          if (m?.id && !mergedMap.has(m.id)) mergedMap.set(m.id, m);
+        });
+        const merged = Array.from(mergedMap.values()).sort(
+          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
+        writeLocal(STORAGE_KEYS.SUPPORT_MESSAGES, merged);
+        return merged;
+      }
+    } catch {
+      /* fallback */
+    }
+    return Array.isArray(localList) ? localList : [];
+  },
+
+  async createSupportMessage(payload = {}) {
+    const now = new Date().toISOString();
+    const record = {
+      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      student_id: payload.student_id || '',
+      full_name: String(payload.full_name || '').trim() || 'Foydalanuvchi',
+      contact: String(payload.contact || '').trim(),
+      email: String(payload.email || '').trim(),
+      category: payload.category || 'help', // 'help' | 'complaint' | 'suggestion' | 'question'
+      message: String(payload.message || '').trim(),
+      status: 'new', // 'new' | 'read' | 'replied'
+      admin_note: '',
+      created_at: now,
+      updated_at: now,
+    };
+
+    const current = readLocal(STORAGE_KEYS.SUPPORT_MESSAGES, []);
+    writeLocal(STORAGE_KEYS.SUPPORT_MESSAGES, [
+      record,
+      ...(Array.isArray(current) ? current : []),
+    ]);
+
+    try {
+      await supabase.from('support_messages').insert(record);
+    } catch {
+      /* fallback kept in localStorage */
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_messages_changed'));
+    }
+    return record;
+  },
+
+  async updateSupportMessage(id, changes = {}) {
+    const now = new Date().toISOString();
+    const patch = {
+      ...(changes.status !== undefined ? { status: changes.status } : {}),
+      ...(changes.admin_note !== undefined ? { admin_note: changes.admin_note } : {}),
+      updated_at: now,
+    };
+
+    const current = readLocal(STORAGE_KEYS.SUPPORT_MESSAGES, []);
+    const next = (Array.isArray(current) ? current : []).map((m) =>
+      m.id === id ? { ...m, ...patch } : m
+    );
+    writeLocal(STORAGE_KEYS.SUPPORT_MESSAGES, next);
+
+    try {
+      await supabase.from('support_messages').update(patch).eq('id', id);
+    } catch {
+      /* ignore */
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_messages_changed'));
+    }
+    return next.find((m) => m.id === id) || null;
+  },
+
+  async deleteSupportMessage(id) {
+    const current = readLocal(STORAGE_KEYS.SUPPORT_MESSAGES, []);
+    const next = (Array.isArray(current) ? current : []).filter((m) => m.id !== id);
+    writeLocal(STORAGE_KEYS.SUPPORT_MESSAGES, next);
+
+    try {
+      await supabase.from('support_messages').delete().eq('id', id);
+    } catch {
+      /* ignore */
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_messages_changed'));
+    }
+    return true;
+  },
+
+  // --- ADMIN BROADCAST NOTIFICATIONS (registered | guest | all) ---
+  async listBroadcastNotifications() {
+    const localList = readLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, []);
+    try {
+      const { data, error } = await supabase
+        .from('broadcast_notifications')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        const mergedMap = new Map();
+        data.forEach((n) => mergedMap.set(n.id, n));
+        (Array.isArray(localList) ? localList : []).forEach((n) => {
+          if (n?.id && !mergedMap.has(n.id)) mergedMap.set(n.id, n);
+        });
+        const merged = Array.from(mergedMap.values()).sort(
+          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
+        writeLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, merged);
+        return merged;
+      }
+    } catch {
+      /* fallback */
+    }
+    return Array.isArray(localList) ? localList : [];
+  },
+
+  async createBroadcastNotification({ title, message, audience = 'all', tone = 'info' }) {
+    const session = this.getAdminSession();
+    const record = {
+      id: 'notif-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      title: String(title || '').trim(),
+      message: String(message || '').trim(),
+      audience: ['registered', 'guest', 'all'].includes(audience) ? audience : 'all',
+      tone: ['info', 'promo', 'alert'].includes(tone) ? tone : 'info',
+      sent_by: session?.name || 'Admin',
+      created_at: new Date().toISOString(),
+    };
+
+    const current = readLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, []);
+    writeLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, [
+      record,
+      ...(Array.isArray(current) ? current : []),
+    ]);
+
+    try {
+      await supabase.from('broadcast_notifications').insert(record);
+    } catch {
+      /* fallback kept in localStorage */
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_notifications_changed'));
+    }
+    return record;
+  },
+
+  async deleteBroadcastNotification(id) {
+    const current = readLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, []);
+    const next = (Array.isArray(current) ? current : []).filter((n) => n.id !== id);
+    writeLocal(STORAGE_KEYS.BROADCAST_NOTIFICATIONS, next);
+
+    try {
+      await supabase.from('broadcast_notifications').delete().eq('id', id);
+    } catch {
+      /* ignore */
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_notifications_changed'));
+    }
     return true;
   },
 };

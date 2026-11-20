@@ -13,6 +13,7 @@ import {
   Sun,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { useTheme } from '@/lib/ThemeContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -22,6 +23,7 @@ import { cn } from '@/lib/utils';
 const PREFS_KEY = 'imtiyo_system_settings_v1';
 
 export default function SettingsPanel() {
+  const { t } = useLang();
   const { toast } = useToast();
   const { profile } = useStudent();
   const { theme, setTheme } = useTheme();
@@ -58,15 +60,15 @@ export default function SettingsPanel() {
 
   const togglePref = (key) => {
     setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
-    toast({ title: 'Sozlama saqlandi' });
+    toast({ title: t('settings.saved') });
   };
 
   const handleThemeSelect = (mode) => {
     setTheme(mode);
     const labels = {
-      light: 'Yorug‘ (Light) rejim yoqildi',
-      dark: 'Tungi (Dark) rejim yoqildi',
-      system: 'Qurilma rejimi (System) tanlandi',
+      light: t('settings.light'),
+      dark: t('settings.dark'),
+      system: t('settings.system'),
     };
     toast({ title: labels[mode] });
   };
@@ -75,13 +77,13 @@ export default function SettingsPanel() {
     e.preventDefault();
     if (newPassword.length < 6) {
       toast({
-        title: 'Parol kamida 6 ta belgidan iborat bo‘lishi kerak',
+        title: t('welcome.newPasswordPlaceholder'),
         variant: 'destructive',
       });
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast({ title: 'Parollar bir-biriga mos kelmadi', variant: 'destructive' });
+      toast({ title: t('welcome.passwordMismatch'), variant: 'destructive' });
       return;
     }
 
@@ -92,9 +94,9 @@ export default function SettingsPanel() {
       setNewPassword('');
       setConfirmPassword('');
       setOpenPanel(null);
-      toast({ title: 'Parolingiz muvaffaqiyatli yangilandi!' });
+      toast({ title: t('settings.saved') });
     } catch {
-      toast({ title: 'Parolni yangilashda xatolik', variant: 'destructive' });
+      toast({ title: 'Error', variant: 'destructive' });
     } finally {
       setSavingPass(false);
     }
@@ -121,10 +123,10 @@ export default function SettingsPanel() {
             </div>
             <div>
               <h2 className="text-[15px] font-extrabold text-[#08123A] dark:text-white">
-                Ko‘rinish (Tema)
+                {t('settings.appearance')}
               </h2>
               <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                Yorug‘, Tungi yoki Qurilma rejimini tanlash
+                {t('settings.appearanceDesc')}
               </p>
             </div>
           </div>
@@ -149,7 +151,7 @@ export default function SettingsPanel() {
               )}
             >
               <Sun className="h-4 w-4 text-amber-500" />
-              <span>Yorug‘ (Light)</span>
+              <span>{t('settings.light')}</span>
             </button>
 
             <button
@@ -163,7 +165,7 @@ export default function SettingsPanel() {
               )}
             >
               <Moon className="h-4 w-4 text-indigo-400" />
-              <span>Tungi (Dark)</span>
+              <span>{t('settings.dark')}</span>
             </button>
 
             <button
@@ -177,7 +179,7 @@ export default function SettingsPanel() {
               )}
             >
               <Monitor className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
-              <span>Qurilma bilan bir xil</span>
+              <span>{t('settings.system')}</span>
             </button>
           </div>
         )}
@@ -196,10 +198,10 @@ export default function SettingsPanel() {
             </div>
             <div>
               <h2 className="text-[15px] font-extrabold text-[#08123A] dark:text-white">
-                Xavfsizlik
+                {t('settings.security')}
               </h2>
               <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                Yangi parol qo‘yish va faol seans
+                {t('settings.securityDesc')}
               </p>
             </div>
           </div>
@@ -223,7 +225,7 @@ export default function SettingsPanel() {
                   type={showPass ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Yangi parol (min. 6 belgi)"
+                  placeholder={t('welcome.newPasswordPlaceholder')}
                   className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 />
                 <button
@@ -241,7 +243,7 @@ export default function SettingsPanel() {
                   type={showPass ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Yangi parolni tasdiqlang"
+                  placeholder={t('welcome.confirmPasswordPlaceholder')}
                   className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 />
               </div>
@@ -250,7 +252,9 @@ export default function SettingsPanel() {
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
               <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-[11.5px] font-bold text-emerald-700 dark:text-emerald-300">
                 <Laptop className="h-3.5 w-3.5" />
-                <span>Faol seans: Shu qurilma ({profile?.provider || 'Web'})</span>
+                <span>
+                  {t('settings.activeSession', { provider: profile?.provider || 'Web' })}
+                </span>
               </div>
 
               <Button
@@ -259,7 +263,7 @@ export default function SettingsPanel() {
                 className="h-9 rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] px-5 text-[12px] font-bold text-white"
               >
                 <Check className="mr-1.5 h-3.5 w-3.5" />
-                {savingPass ? 'Saqlanmoqda...' : 'Parolni saqlash'}
+                {savingPass ? t('common.saving') : t('settings.savePassword')}
               </Button>
             </div>
           </form>
@@ -281,10 +285,10 @@ export default function SettingsPanel() {
             </div>
             <div>
               <h2 className="text-[15px] font-extrabold text-[#08123A] dark:text-white">
-                Bildirishnomalar
+                {t('settings.notifications')}
               </h2>
               <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                Chegirmalar va talabalik statusi xabarnomalari
+                {t('settings.notificationsDesc')}
               </p>
             </div>
           </div>
@@ -301,18 +305,18 @@ export default function SettingsPanel() {
             {[
               {
                 key: 'notifyDeals',
-                title: 'Yangi chegirmalar va aksiyalar',
-                desc: 'Yangi hamkor brendlar qo‘shilganda xabarnoma olish',
+                title: t('settings.notifyDeals'),
+                desc: t('settings.notifyDealsDesc'),
               },
               {
                 key: 'notifyPromos',
-                title: 'Maxsus promo-kodlar',
-                desc: 'Muddati cheklangan eksklyuziv promo-kodlar haqida eslatma',
+                title: t('settings.notifyPromos'),
+                desc: t('settings.notifyPromosDesc'),
               },
               {
                 key: 'notifyStatus',
-                title: 'Talabalik statusi o‘zgarishi',
-                desc: 'Hujjatingiz moderator tomonidan tasdiqlanganda yoki rad etilganda xabar berish',
+                title: t('settings.notifyStatus'),
+                desc: t('settings.notifyStatusDesc'),
               },
             ].map((item) => {
               const active = Boolean(prefs[item.key]);

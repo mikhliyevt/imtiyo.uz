@@ -1,47 +1,55 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, MessageSquareText, Send, Sparkles, User, X } from 'lucide-react';
+import { Bot, MessageSquareText, Send, Sparkles, X } from 'lucide-react';
+import { useLang } from '@/lib/LanguageContext';
 import { cn } from '@/lib/utils';
 
-const QUICK_PROMPTS = [
-  'Qanday chegirmalar bor?',
-  'Talabalikni tasdiqlash',
-  'Promo-kod olish',
-];
-
-const INITIAL_MESSAGES = [
-  {
-    id: 'welcome-1',
-    sender: 'bot',
-    text: 'Salom! Men IMTIYO AI yordamchisiman ✨ Chegirmalar yoki talabalikni tasdiqlash bo‘yicha savolingiz bormi?',
-  },
-];
-
-function getSmartReply(question) {
-  const q = question.toLowerCase();
-  if (q.includes('tasdiq') || q.includes('hujjat') || q.includes('guvohnoma') || q.includes('hemis')) {
-    return 'Talabalik statusini tasdiqlash uchun «Mening profilim» bo‘limiga o‘tib, talabalik guvohnomangiz yoki HEMIS ma’lumotnomasini yuklang.';
-  }
-  if (q.includes('chegirma') || q.includes('aksiya') || q.includes('brend')) {
-    return 'Hozirda EVOS, Oqtepa Lavash, Safia, 1Fit, Cambridge va boshqa hamkorlarda 50% gacha chegirmalar mavjud.';
-  }
-  if (q.includes('promo') || q.includes('kod') || q.includes('qr')) {
-    return 'Istalgan brend sahifasiga kirib «Kod olish» yoki «QR-kod» tugmasini bosing.';
-  }
-  return 'Savolingiz qabul qilindi! Qo‘shimcha ma’lumot uchun «Yordam va Bog‘lanish» bo‘limiga murojaat qilishingiz mumkin.';
-}
-
 export default function AiChatWidget() {
+  const { t, lang } = useLang();
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState(() => [
+    { id: 'welcome-1', sender: 'bot', textKey: 'ai.welcome' },
+  ]);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef(null);
+
+  const quickPrompts = [t('ai.q1'), t('ai.q2'), t('ai.q3')];
+
+  const getSmartReply = (question) => {
+    const q = question.toLowerCase();
+    if (
+      q.includes('tasdiq') ||
+      q.includes('hujjat') ||
+      q.includes('guvohnoma') ||
+      q.includes('hemis') ||
+      q.includes('verify') ||
+      q.includes('status') ||
+      q.includes('подтверд') ||
+      q.includes('статус')
+    ) {
+      return t('ai.replyVerify');
+    }
+    if (
+      q.includes('chegirma') ||
+      q.includes('aksiya') ||
+      q.includes('brend') ||
+      q.includes('discount') ||
+      q.includes('deal') ||
+      q.includes('скидк')
+    ) {
+      return t('ai.replyDeals');
+    }
+    if (q.includes('promo') || q.includes('kod') || q.includes('code') || q.includes('qr') || q.includes('промо')) {
+      return t('ai.replyPromo');
+    }
+    return t('ai.replyDefault');
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, typing, open]);
+  }, [messages, typing, open, lang]);
 
   const sendMessage = (text) => {
     const trimmed = String(text || '').trim();
@@ -79,7 +87,7 @@ export default function AiChatWidget() {
               </div>
               <div>
                 <h3 className="text-[13px] font-extrabold leading-none">IMTIYO AI</h3>
-                <p className="mt-0.5 text-[10px] text-white/80">Virtual yordamchi</p>
+                <p className="mt-0.5 text-[10px] text-white/80">{t('ai.subtitle')}</p>
               </div>
             </div>
             <button
@@ -112,18 +120,18 @@ export default function AiChatWidget() {
                         : 'rounded-bl-sm border border-slate-100 bg-slate-50 text-[#08123A] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                     )}
                   >
-                    {msg.text}
+                    {msg.textKey ? t(msg.textKey) : msg.text}
                   </div>
                 </div>
               );
             })}
 
             {typing && (
-              <div className="text-[11px] font-semibold text-slate-400">IMTIYO AI yozmoqda...</div>
+              <div className="text-[11px] font-semibold text-slate-400">{t('ai.typing')}</div>
             )}
 
             <div className="flex flex-wrap gap-1 pt-1">
-              {QUICK_PROMPTS.map((q) => (
+              {quickPrompts.map((q) => (
                 <button
                   key={q}
                   type="button"
@@ -144,7 +152,7 @@ export default function AiChatWidget() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Savolingiz..."
+              placeholder={t('ai.placeholder')}
               className="h-8 flex-1 rounded-full border border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             />
             <button

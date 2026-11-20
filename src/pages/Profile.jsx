@@ -29,22 +29,25 @@ import StudentCard from '@/components/StudentCard';
 import VerificationPill from '@/components/VerificationPill';
 import VerifyModal from '@/components/VerifyModal';
 import SettingsPanel from '@/components/SettingsPanel';
+import RegionSelect from '@/components/RegionSelect';
 import UniversitySelect from '@/components/UniversitySelect';
+import SearchableSelect from '@/components/SearchableSelect';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { useToast } from '@/components/ui/use-toast';
+import { useScrollLock } from '@/lib/useScrollLock';
 import { api, COURSE_OPTIONS, normalizeCourse } from '@/services/api';
 import { copyText } from '@/lib/deal';
-import { REGIONS, formatUzPhone, formatBirthDateMask } from '@/lib/formUtils';
+import { formatUzPhone, formatBirthDateMask } from '@/lib/formUtils';
 import { cn } from '@/lib/utils';
 
 const PROFILE_TABS = [
-  { id: 'overview', label: 'Mening profilim', icon: User },
-  { id: 'status', label: 'Talabalik statusi', icon: ShieldCheck },
-  { id: 'data', label: 'Mening ma’lumotlarim', icon: GraduationCap },
-  { id: 'codes', label: 'Promo kodlarim', icon: Ticket },
-  { id: 'settings', label: 'Sozlamalar', icon: SettingsIcon },
+  { id: 'overview', labelKey: 'profile.tabOverview', icon: User },
+  { id: 'status', labelKey: 'profile.tabStatus', icon: ShieldCheck },
+  { id: 'data', labelKey: 'profile.tabData', icon: GraduationCap },
+  { id: 'codes', labelKey: 'profile.tabCodes', icon: Ticket },
+  { id: 'settings', labelKey: 'profile.tabSettings', icon: SettingsIcon },
 ];
 
 const VALID_TAB_IDS = new Set(PROFILE_TABS.map((t) => t.id));
@@ -80,6 +83,8 @@ export default function Profile() {
   const [likedCount, setLikedCount] = useState(() => api.getLikedIds().length);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  useScrollLock(showLogoutConfirm);
 
   const [universities, setUniversities] = useState([]);
   // Separate card edit states: 'personal' | 'education' | 'contact' | null
@@ -195,12 +200,12 @@ export default function Profile() {
 
     if (section === 'personal') {
       if (editName.trim().length < 2) {
-        toast({ title: 'Ism va familiyangizni to‘liq kiriting', variant: 'destructive' });
+        toast({ title: t('profile.errName'), variant: 'destructive' });
         return;
       }
       if (editBirthDate && editBirthDate.length !== 10) {
         toast({
-          title: 'Tug‘ilgan sanani KK.OO.YYYY formatida to‘liq kiriting',
+          title: t('profile.errBirthDate'),
           variant: 'destructive',
         });
         return;
@@ -211,11 +216,11 @@ export default function Profile() {
       changes.birth_date = editBirthDate.trim();
     } else if (section === 'education') {
       if (editUniversity === 'Boshqa' && editCustomInstitution.trim().length < 2) {
-        toast({ title: "Ta'lim muassasangiz nomini kiriting", variant: 'destructive' });
+        toast({ title: t('profile.errInstitution'), variant: 'destructive' });
         return;
       }
       if (editCourse && !COURSE_OPTIONS.includes(String(editCourse))) {
-        toast({ title: 'Kurs 1 dan 6 gacha bo‘lishi kerak', variant: 'destructive' });
+        toast({ title: t('profile.errCourse'), variant: 'destructive' });
         return;
       }
       const finalUni =
@@ -227,7 +232,7 @@ export default function Profile() {
       const phoneDigits = editPhone.replace(/\D/g, '');
       if (phoneDigits.length > 0 && phoneDigits.length !== 9) {
         toast({
-          title: 'Telefon raqamni 9 ta raqam bilan to‘liq kiriting',
+          title: t('profile.errPhone'),
           variant: 'destructive',
         });
         return;
@@ -239,9 +244,9 @@ export default function Profile() {
     try {
       await updateProfile(changes);
       setEditingCard(null);
-      toast({ title: 'Ma’lumotlar muvaffaqiyatli saqlandi!' });
+      toast({ title: t('profile.savedToast') });
     } catch {
-      toast({ title: 'Saqlashda xatolik yuz berdi', variant: 'destructive' });
+      toast({ title: t('profile.saveError'), variant: 'destructive' });
     } finally {
       setSavingProfile(false);
     }
@@ -258,31 +263,30 @@ export default function Profile() {
 
   const breadcrumbs =
     activeTab === 'overview'
-      ? [{ label: 'Mening profilim' }]
+      ? [{ label: t('nav.myProfile') }]
       : [
           {
-            label: 'Mening profilim',
+            label: t('nav.myProfile'),
             onClick: () => {
               setActiveTab('overview');
               setEditingCard(null);
             },
           },
-          { label: currentTabMeta.label },
+          { label: t(currentTabMeta.labelKey) },
         ];
 
   if (!profile?.signedIn) {
     return (
-      <AppShell breadcrumbs={[{ label: 'Mening profilim' }]}>
+      <AppShell breadcrumbs={[{ label: t('nav.myProfile') }]}>
         <div className="mx-auto mt-6 max-w-md rounded-[28px] border border-slate-200/80 bg-white/90 p-7 text-center shadow-lg backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-900/90">
           <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-[#002D96] to-[#00A9FF] text-white shadow-md">
             <GraduationCap className="h-7 w-7" />
           </div>
           <h1 className="text-[21px] font-extrabold text-[#08123A] dark:text-white">
-            Shaxsiy kabinet
+            {t('profile.guestTitle')}
           </h1>
           <p className="mx-auto mt-1.5 max-w-[290px] text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-            Ro‘yxatdan o‘ting va talabalik guvohnomangizni tasdiqlab, barcha hamkorlar
-            chegirmalaridan foydalaning.
+            {t('profile.guestDesc')}
           </p>
 
           <div className="mt-6 space-y-2.5">
@@ -291,14 +295,14 @@ export default function Profile() {
               className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white shadow-md"
             >
               <UserPlus className="h-4 w-4" />
-              Ro‘yxatdan o‘tish
+              {t('header.signup')}
             </Link>
             <Link
               to="/welcome?mode=signin"
               className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-[#08123A] hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             >
               <LogIn className="h-4 w-4" />
-              Tizimga kirish
+              {t('welcome.loginTitle')}
             </Link>
           </div>
         </div>
@@ -311,7 +315,9 @@ export default function Profile() {
       ? 'verify.verifiedNote'
       : profile.status === 'pending'
         ? 'verify.pendingNote'
-        : 'verify.unverifiedNote';
+        : profile.status === 'rejected'
+          ? 'verify.rejectedNote'
+          : 'verify.unverifiedNote';
 
   const initials = (profile.name || 'F')
     .split(' ')
@@ -323,12 +329,24 @@ export default function Profile() {
 
   const genderLabel =
     profile.gender === 'male'
-      ? 'O‘g‘il bola'
+      ? t('gender.male')
       : profile.gender === 'female'
-        ? 'Qiz bola'
-        : 'Kiritilmagan';
+        ? t('gender.female')
+        : t('common.notProvided');
 
-  const courseLabel = profile.course ? `${profile.course}-kurs` : 'Kiritilmagan';
+  const courseLabel = profile.course
+    ? `${profile.course}${t('common.courseSuffix')}`
+    : t('common.notProvided');
+
+  const genderOptions = [
+    { value: 'male', label: t('gender.male') },
+    { value: 'female', label: t('gender.female') },
+  ];
+
+  const courseOptions = COURSE_OPTIONS.map((c) => ({
+    value: c,
+    label: `${c}${t('common.courseSuffix')}`,
+  }));
 
   return (
     <AppShell breadcrumbs={breadcrumbs}>
@@ -354,7 +372,7 @@ export default function Profile() {
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
-                <span>{tab.label}</span>
+                <span>{t(tab.labelKey)}</span>
               </button>
             );
           })}
@@ -427,7 +445,7 @@ export default function Profile() {
                       >
                         <span className="flex items-center gap-2.5 truncate">
                           <Icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{tab.label}</span>
+                          <span className="truncate">{t(tab.labelKey)}</span>
                         </span>
                         {tab.id === 'codes' && codes.length > 0 && (
                           <span
@@ -460,7 +478,7 @@ export default function Profile() {
                     className="flex w-full items-center gap-2.5 rounded-full px-4 py-2 text-left text-[12.5px] font-bold text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                   >
                     <LogOut className="h-4 w-4 shrink-0" />
-                    <span>Chiqish</span>
+                    <span>{t('header.logout')}</span>
                   </button>
                 </li>
               </ul>
@@ -472,18 +490,18 @@ export default function Profile() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h1 className="text-[24px] font-black tracking-tight text-[#08123A] dark:text-white md:text-[28px]">
-                  {currentTabMeta.label}
+                  {t(currentTabMeta.labelKey)}
                 </h1>
                 <p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
                   {activeTab === 'overview'
-                    ? 'Raqamli talaba kartangiz, holatingiz va tezkor ko‘rsatkichlar'
+                    ? t('profile.descOverview')
                     : activeTab === 'status'
-                      ? 'Talabalik guvohnomasi va tasdiqlash holati'
+                      ? t('profile.descStatus')
                       : activeTab === 'data'
-                        ? 'Shaxsiy, ta’lim va aloqa ma’lumotlaringizni boshqaring'
+                        ? t('profile.descData')
                         : activeTab === 'settings'
-                          ? 'Ko‘rinish (tema), xavfsizlik va bildirishnoma sozlamalari'
-                          : 'Faollashtirilgan chegirma va promo-kodlaringiz'}
+                          ? t('profile.descSettings')
+                          : t('profile.descCodes')}
                 </p>
               </div>
             </div>
@@ -497,22 +515,14 @@ export default function Profile() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-[14.5px] font-extrabold text-rose-700 dark:text-rose-300">
                           <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
-                          <span>Talabalik hujjatingiz rad etildi</span>
+                          <span>{t('notif.rejectedTitle')}</span>
                         </div>
                         <p className="text-[13px] font-semibold">
-                          Sabab:{' '}
+                          {t('notif.rejectedReasonPrefix')}{' '}
                           <span className="font-extrabold">
-                            «
-                            {profile.rejection_reason ||
-                              'Hujjat talabga javob bermaydi. Iltimos, sifatliroq nusxasini qayta yuklang.'}
-                            »
+                            «{profile.rejection_reason || t('notif.rejectedFallback')}»
                           </span>
                         </p>
-                        {profile.reviewed_by && (
-                          <p className="text-[11.5px] font-medium opacity-80">
-                            Tekshirdi: <strong>{profile.reviewed_by}</strong>
-                          </p>
-                        )}
                       </div>
                       <Button
                         type="button"
@@ -520,7 +530,7 @@ export default function Profile() {
                         className="h-9 rounded-full bg-rose-600 px-4 text-[12px] font-bold text-white hover:bg-rose-700"
                       >
                         <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                        Hujjatni qayta yuklash
+                        {t('notif.reupload')}
                       </Button>
                     </div>
                   </div>
@@ -536,7 +546,7 @@ export default function Profile() {
                   <div className="flex flex-col justify-between gap-4 rounded-[24px] border border-slate-200/80 bg-white/90 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 lg:col-span-5">
                     <div>
                       <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-                        Tezkor statistika
+                        {t('profile.quickStats')}
                       </p>
                       <div className="mt-3 grid grid-cols-2 gap-3">
                         <button
@@ -549,7 +559,7 @@ export default function Profile() {
                             {codes.length}
                           </p>
                           <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                            Promo kodlar
+                            {t('profile.promoCodesLabel')}
                           </p>
                         </button>
 
@@ -562,7 +572,7 @@ export default function Profile() {
                             {likedCount}
                           </p>
                           <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                            Saqlanganlar
+                            {t('profile.savedLabel')}
                           </p>
                         </Link>
                       </div>
@@ -579,7 +589,7 @@ export default function Profile() {
                       >
                         <ShieldCheck className="mr-1.5 h-4 w-4" />
                         {profile.status === 'rejected'
-                          ? 'Hujjatni qaytadan yuklash'
+                          ? t('notif.reupload')
                           : t('verify.cta')}
                       </Button>
                     )}
@@ -591,7 +601,7 @@ export default function Profile() {
                   <div className="rounded-[24px] border border-slate-200/80 bg-white/90 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
                       <h2 className="text-[14.5px] font-extrabold text-[#08123A] dark:text-white">
-                        Shaxsiy ma’lumotlar
+                        {t('profile.personalInfo')}
                       </h2>
                       <button
                         type="button"
@@ -602,25 +612,31 @@ export default function Profile() {
                         className="inline-flex items-center gap-1 text-[12px] font-bold text-[#1D6FF2] hover:underline dark:text-sky-400"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
-                        Tahrirlash
+                        {t('common.edit')}
                       </button>
                     </div>
                     <dl className="mt-3.5 space-y-2.5 text-[13px]">
                       <div>
-                        <dt className="text-[11px] font-semibold text-slate-400">Ism va familiya</dt>
+                        <dt className="text-[11px] font-semibold text-slate-400">
+                          {t('profile.fullName')}
+                        </dt>
                         <dd className="font-bold text-[#08123A] dark:text-slate-100">
                           {profile.name || '—'}
                         </dd>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <dt className="text-[11px] font-semibold text-slate-400">Tug‘ilgan sana</dt>
+                          <dt className="text-[11px] font-semibold text-slate-400">
+                            {t('profile.birthDate')}
+                          </dt>
                           <dd className="font-bold text-[#08123A] dark:text-slate-100">
-                            {profile.birth_date || 'Kiritilmagan'}
+                            {profile.birth_date || t('common.notProvided')}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-[11px] font-semibold text-slate-400">Jinsi</dt>
+                          <dt className="text-[11px] font-semibold text-slate-400">
+                            {t('profile.gender')}
+                          </dt>
                           <dd className="font-bold text-[#08123A] dark:text-slate-100">
                             {genderLabel}
                           </dd>
@@ -632,7 +648,7 @@ export default function Profile() {
                   <div className="rounded-[24px] border border-slate-200/80 bg-white/90 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
                       <h2 className="text-[14.5px] font-extrabold text-[#08123A] dark:text-white">
-                        Ta’lim ma’lumotlari
+                        {t('profile.educationInfo')}
                       </h2>
                       <button
                         type="button"
@@ -643,29 +659,33 @@ export default function Profile() {
                         className="inline-flex items-center gap-1 text-[12px] font-bold text-[#1D6FF2] hover:underline dark:text-sky-400"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
-                        Tahrirlash
+                        {t('common.edit')}
                       </button>
                     </div>
                     <dl className="mt-3.5 space-y-2.5 text-[13px]">
                       <div>
                         <dt className="text-[11px] font-semibold text-slate-400">
-                          Ta’lim muassasasi
+                          {t('profile.institution')}
                         </dt>
                         <dd className="truncate font-bold text-[#08123A] dark:text-slate-100">
-                          {profile.university || 'Kiritilmagan'}
+                          {profile.university || t('common.notProvided')}
                         </dd>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <dt className="text-[11px] font-semibold text-slate-400">Kurs</dt>
+                          <dt className="text-[11px] font-semibold text-slate-400">
+                            {t('profile.course')}
+                          </dt>
                           <dd className="font-bold text-[#1D6FF2] dark:text-sky-400">
                             {courseLabel}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-[11px] font-semibold text-slate-400">Viloyat</dt>
+                          <dt className="text-[11px] font-semibold text-slate-400">
+                            {t('profile.region')}
+                          </dt>
                           <dd className="truncate font-bold text-[#08123A] dark:text-slate-100">
-                            {profile.region || 'Kiritilmagan'}
+                            {profile.region || t('common.notProvided')}
                           </dd>
                         </div>
                       </div>
@@ -682,10 +702,10 @@ export default function Profile() {
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
                     <div>
                       <p className="text-[11.5px] font-bold uppercase tracking-wider text-slate-400">
-                        Joriy holat
+                        {t('profile.currentStatus')}
                       </p>
                       <h2 className="mt-1 text-[18px] font-extrabold text-[#08123A] dark:text-white">
-                        Talabalik tasdiqlanishi
+                        {t('profile.verificationTitle')}
                       </h2>
                     </div>
                     <VerificationPill status={profile.status} />
@@ -696,27 +716,21 @@ export default function Profile() {
                       <div className="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3.5 text-rose-700 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-300">
                         <div className="flex items-center gap-2 text-[13px] font-extrabold">
                           <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
-                          <span>Hujjatingiz rad etildi</span>
+                          <span>{t('notif.rejectedTitle')}</span>
                         </div>
                         <p className="mt-1 text-[12.5px] font-semibold">
-                          Sabab:{' '}
+                          {t('notif.rejectedReasonPrefix')}{' '}
                           <span className="font-bold">
-                            {profile.rejection_reason ||
-                              'Hujjat talabga javob bermaydi. Iltimos, sifatliroq nusxasini qayta yuklang.'}
+                            {profile.rejection_reason || t('notif.rejectedFallback')}
                           </span>
                         </p>
-                        {profile.reviewed_by && (
-                          <p className="mt-1 text-[11px] font-medium opacity-80">
-                            Tekshirdi: <strong>{profile.reviewed_by}</strong>
-                          </p>
-                        )}
                       </div>
                     )}
 
-                    {profile.status === 'verified' && profile.reviewed_by && (
+                    {profile.status === 'verified' && (
                       <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-[12.5px] font-bold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-300">
                         <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span>Tasdiqladi: {profile.reviewed_by}</span>
+                        <span>{t('profile.verifiedBanner')}</span>
                       </div>
                     )}
 
@@ -726,16 +740,20 @@ export default function Profile() {
 
                     <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
                       <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/60">
-                        <p className="text-[11px] font-bold text-slate-400">Yuklangan hujjat</p>
+                        <p className="text-[11px] font-bold text-slate-400">
+                          {t('profile.uploadedDoc')}
+                        </p>
                         <p className="mt-1 truncate text-[13px] font-extrabold text-[#08123A] dark:text-white">
-                          {profile.document_name || 'Hali yuklanmagan'}
+                          {profile.document_name || t('profile.notUploaded')}
                         </p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/60">
-                        <p className="text-[11px] font-bold text-slate-400">OTM va kurs</p>
+                        <p className="text-[11px] font-bold text-slate-400">
+                          {t('profile.uniAndCourse')}
+                        </p>
                         <p className="mt-1 truncate text-[13px] font-extrabold text-[#08123A] dark:text-white">
-                          {profile.university || 'Kiritilmagan'}
-                          {profile.course ? ` · ${profile.course}-kurs` : ''}
+                          {profile.university || t('common.notProvided')}
+                          {profile.course ? ` · ${profile.course}${t('common.courseSuffix')}` : ''}
                         </p>
                       </div>
                     </div>
@@ -747,7 +765,7 @@ export default function Profile() {
                       >
                         <ShieldCheck className="mr-2 h-4 w-4" />
                         {profile.status === 'rejected'
-                          ? 'Hujjatni qaytadan yuklash'
+                          ? t('notif.reupload')
                           : t('verify.cta')}
                       </Button>
                     )}
@@ -767,7 +785,7 @@ export default function Profile() {
                         <User className="h-4.5 w-4.5" />
                       </span>
                       <h2 className="text-[15.5px] font-extrabold text-[#08123A] dark:text-white">
-                        Shaxsiy ma’lumotlar
+                        {t('profile.personalInfo')}
                       </h2>
                     </div>
 
@@ -781,12 +799,12 @@ export default function Profile() {
                       {editingCard === 'personal' ? (
                         <>
                           <X className="h-3.5 w-3.5" />
-                          <span>Yopish</span>
+                          <span>{t('common.close')}</span>
                         </>
                       ) : (
                         <>
                           <Edit3 className="h-3.5 w-3.5" />
-                          <span>Tahrirlash</span>
+                          <span>{t('common.edit')}</span>
                         </>
                       )}
                     </button>
@@ -799,20 +817,20 @@ export default function Profile() {
                     >
                       <div>
                         <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
-                          Ism va familiya
+                          {t('profile.fullName')}
                         </label>
                         <input
                           required
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                         />
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
-                            Tug‘ilgan sana (KK.OO.YYYY)
+                            {t('profile.birthDateMask')}
                           </label>
                           <input
                             value={editBirthDate}
@@ -820,23 +838,21 @@ export default function Profile() {
                             inputMode="numeric"
                             maxLength={10}
                             placeholder="05.07.2005"
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                           />
                         </div>
 
                         <div>
                           <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
-                            Jinsi
+                            {t('profile.gender')}
                           </label>
-                          <select
+                          <SearchableSelect
+                            options={genderOptions}
                             value={editGender}
-                            onChange={(e) => setEditGender(e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                          >
-                            <option value="">Tanlanmagan</option>
-                            <option value="male">O‘g‘il bola</option>
-                            <option value="female">Qiz bola</option>
-                          </select>
+                            onChange={setEditGender}
+                            searchable={false}
+                            placeholder={t('select.genderPlaceholder')}
+                          />
                         </div>
                       </div>
 
@@ -847,7 +863,7 @@ export default function Profile() {
                           onClick={() => setEditingCard(null)}
                           className="h-9 rounded-full px-4 text-[12px] font-bold dark:border-slate-700 dark:text-slate-200"
                         >
-                          Bekor qilish
+                          {t('common.cancel')}
                         </Button>
                         <Button
                           type="submit"
@@ -855,7 +871,7 @@ export default function Profile() {
                           className="h-9 rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] px-5 text-[12px] font-bold text-white"
                         >
                           <Check className="mr-1.5 h-3.5 w-3.5" />
-                          {savingProfile ? 'Saqlanmoqda...' : 'Saqlash'}
+                          {savingProfile ? t('common.saving') : t('common.save')}
                         </Button>
                       </div>
                     </form>
@@ -863,22 +879,24 @@ export default function Profile() {
                     <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div>
                         <dt className="text-[11.5px] font-semibold text-slate-400">
-                          Ism va familiya
+                          {t('profile.fullName')}
                         </dt>
                         <dd className="mt-0.5 text-[14px] font-bold text-[#08123A] dark:text-slate-100">
-                          {profile.name || 'Kiritilmagan'}
+                          {profile.name || t('common.notProvided')}
                         </dd>
                       </div>
                       <div>
                         <dt className="text-[11.5px] font-semibold text-slate-400">
-                          Tug‘ilgan sana
+                          {t('profile.birthDate')}
                         </dt>
                         <dd className="mt-0.5 text-[14px] font-bold text-[#08123A] dark:text-slate-100">
-                          {profile.birth_date || 'Kiritilmagan'}
+                          {profile.birth_date || t('common.notProvided')}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-[11.5px] font-semibold text-slate-400">Jinsi</dt>
+                        <dt className="text-[11.5px] font-semibold text-slate-400">
+                          {t('profile.gender')}
+                        </dt>
                         <dd className="mt-0.5 text-[14px] font-bold text-[#08123A] dark:text-slate-100">
                           {genderLabel}
                         </dd>
@@ -887,7 +905,7 @@ export default function Profile() {
                   )}
                 </section>
 
-                {/* KARTA 2: TA'LIM MA'LUMOTLARI (VILOYAT, OTM VA KURS 1-6) */}
+                {/* KARTA 2: TA'LIM MA'LUMOTLARI (VILOYAT, OTM VA KURS 1-6 — BIR XIL CUSTOM DROPDOWN) */}
                 <section className="rounded-[24px] border border-slate-200/80 bg-white/95 p-6 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
                   <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3.5 dark:border-slate-800">
                     <div className="flex items-center gap-2.5">
@@ -895,7 +913,7 @@ export default function Profile() {
                         <GraduationCap className="h-4.5 w-4.5" />
                       </span>
                       <h2 className="text-[15.5px] font-extrabold text-[#08123A] dark:text-white">
-                        Ta’lim ma’lumotlari
+                        {t('profile.educationInfo')}
                       </h2>
                     </div>
 
@@ -909,12 +927,12 @@ export default function Profile() {
                       {editingCard === 'education' ? (
                         <>
                           <X className="h-3.5 w-3.5" />
-                          <span>Yopish</span>
+                          <span>{t('common.close')}</span>
                         </>
                       ) : (
                         <>
                           <Edit3 className="h-3.5 w-3.5" />
-                          <span>Tahrirlash</span>
+                          <span>{t('common.edit')}</span>
                         </>
                       )}
                     </button>
@@ -928,48 +946,36 @@ export default function Profile() {
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
-                            Viloyat
+                            {t('profile.region')}
                           </label>
-                          <select
+                          <RegionSelect
                             value={editRegion}
-                            onChange={(e) => {
-                              setEditRegion(e.target.value);
+                            onChange={(val) => {
+                              setEditRegion(val);
                               setEditUniversity('');
                               setEditCustomInstitution('');
                             }}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                          >
-                            <option value="">Viloyatni tanlang</option>
-                            {REGIONS.map((r) => (
-                              <option key={r} value={r}>
-                                {r}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </div>
 
                         <div>
                           <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
-                            Kurs (1–6)
+                            {t('profile.courseRange')}
                           </label>
-                          <select
+                          <SearchableSelect
+                            options={courseOptions}
                             value={editCourse}
-                            onChange={(e) => setEditCourse(e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                          >
-                            <option value="">Kursingizni tanlang</option>
-                            {COURSE_OPTIONS.map((c) => (
-                              <option key={c} value={c}>
-                                {c}-kurs
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setEditCourse}
+                            searchable={false}
+                            placeholder={t('select.coursePlaceholder')}
+                            icon={GraduationCap}
+                          />
                         </div>
                       </div>
 
                       <div>
                         <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
-                          Oliy ta’lim muassasasi
+                          {t('profile.university')}
                         </label>
                         <UniversitySelect
                           universities={filteredUniversities}
@@ -978,22 +984,20 @@ export default function Profile() {
                             setEditUniversity(val);
                             if (val !== 'Boshqa') setEditCustomInstitution('');
                           }}
-                          placeholder="Universitetni qidiring yoki tanlang..."
-                          otherLabel="Boshqa"
                         />
                       </div>
 
                       {editUniversity === 'Boshqa' && (
                         <div>
                           <label className="mb-1 block text-[11.5px] font-bold text-[#002D96] dark:text-sky-300">
-                            Ta’lim muassasangiz nomi
+                            {t('select.customUniversityLabel')}
                           </label>
                           <input
                             required
                             value={editCustomInstitution}
                             onChange={(e) => setEditCustomInstitution(e.target.value)}
-                            placeholder="Ta’lim muassasangiz nomini yozing"
-                            className="w-full rounded-xl border border-[#1D6FF2]/50 bg-[#1D6FF2]/[0.04] px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:bg-sky-500/10 dark:text-white"
+                            placeholder={t('select.customUniversityPlaceholder')}
+                            className="w-full rounded-2xl border border-[#1D6FF2]/50 bg-[#1D6FF2]/[0.04] px-3.5 py-2.5 text-[13px] font-semibold text-[#08123A] outline-none focus:border-[#1D6FF2] dark:bg-sky-500/10 dark:text-white"
                           />
                         </div>
                       )}
@@ -1005,7 +1009,7 @@ export default function Profile() {
                           onClick={() => setEditingCard(null)}
                           className="h-9 rounded-full px-4 text-[12px] font-bold dark:border-slate-700 dark:text-slate-200"
                         >
-                          Bekor qilish
+                          {t('common.cancel')}
                         </Button>
                         <Button
                           type="submit"
@@ -1013,7 +1017,7 @@ export default function Profile() {
                           className="h-9 rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] px-5 text-[12px] font-bold text-white"
                         >
                           <Check className="mr-1.5 h-3.5 w-3.5" />
-                          {savingProfile ? 'Saqlanmoqda...' : 'Saqlash'}
+                          {savingProfile ? t('common.saving') : t('common.save')}
                         </Button>
                       </div>
                     </form>
@@ -1022,16 +1026,16 @@ export default function Profile() {
                       <div className="sm:col-span-2">
                         <dt className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-400">
                           <Building2 className="h-3.5 w-3.5" />
-                          <span>Oliy ta’lim muassasasi</span>
+                          <span>{t('profile.university')}</span>
                         </dt>
                         <dd className="mt-0.5 text-[14px] font-bold text-[#08123A] dark:text-slate-100">
-                          {profile.university || 'Kiritilmagan'}
+                          {profile.university || t('common.notProvided')}
                         </dd>
                       </div>
                       <div>
                         <dt className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-400">
                           <BookOpen className="h-3.5 w-3.5" />
-                          <span>Kurs</span>
+                          <span>{t('profile.course')}</span>
                         </dt>
                         <dd className="mt-0.5 text-[14px] font-extrabold text-[#1D6FF2] dark:text-sky-400">
                           {courseLabel}
@@ -1040,10 +1044,10 @@ export default function Profile() {
                       <div className="sm:col-span-3">
                         <dt className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-400">
                           <MapPin className="h-3.5 w-3.5" />
-                          <span>Viloyat</span>
+                          <span>{t('profile.region')}</span>
                         </dt>
                         <dd className="mt-0.5 text-[14px] font-bold text-[#08123A] dark:text-slate-100">
-                          {profile.region || 'Kiritilmagan'}
+                          {profile.region || t('common.notProvided')}
                         </dd>
                       </div>
                     </dl>
@@ -1058,7 +1062,7 @@ export default function Profile() {
                         <Phone className="h-4.5 w-4.5" />
                       </span>
                       <h2 className="text-[15.5px] font-extrabold text-[#08123A] dark:text-white">
-                        Aloqa ma’lumotlari
+                        {t('profile.contactInfo')}
                       </h2>
                     </div>
 
@@ -1072,12 +1076,12 @@ export default function Profile() {
                       {editingCard === 'contact' ? (
                         <>
                           <X className="h-3.5 w-3.5" />
-                          <span>Yopish</span>
+                          <span>{t('common.close')}</span>
                         </>
                       ) : (
                         <>
                           <Edit3 className="h-3.5 w-3.5" />
-                          <span>Tahrirlash</span>
+                          <span>{t('common.edit')}</span>
                         </>
                       )}
                     </button>
@@ -1090,9 +1094,9 @@ export default function Profile() {
                     >
                       <div>
                         <label className="mb-1 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
-                          Telefon raqam
+                          {t('profile.phone')}
                         </label>
-                        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800">
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800">
                           <span className="text-[13px] font-extrabold text-[#002D96] dark:text-sky-400">
                             +998
                           </span>
@@ -1113,7 +1117,7 @@ export default function Profile() {
                           onClick={() => setEditingCard(null)}
                           className="h-9 rounded-full px-4 text-[12px] font-bold dark:border-slate-700 dark:text-slate-200"
                         >
-                          Bekor qilish
+                          {t('common.cancel')}
                         </Button>
                         <Button
                           type="submit"
@@ -1121,7 +1125,7 @@ export default function Profile() {
                           className="h-9 rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] px-5 text-[12px] font-bold text-white"
                         >
                           <Check className="mr-1.5 h-3.5 w-3.5" />
-                          {savingProfile ? 'Saqlanmoqda...' : 'Saqlash'}
+                          {savingProfile ? t('common.saving') : t('common.save')}
                         </Button>
                       </div>
                     </form>
@@ -1130,19 +1134,19 @@ export default function Profile() {
                       <div>
                         <dt className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-400">
                           <Phone className="h-3.5 w-3.5" />
-                          <span>Telefon raqam</span>
+                          <span>{t('profile.phone')}</span>
                         </dt>
                         <dd className="mt-0.5 text-[14px] font-bold text-[#08123A] dark:text-slate-100">
-                          {profile.phone || 'Kiritilmagan'}
+                          {profile.phone || t('common.notProvided')}
                         </dd>
                       </div>
                       <div>
                         <dt className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-400">
                           <Mail className="h-3.5 w-3.5" />
-                          <span>Elektron pochta</span>
+                          <span>{t('profile.email')}</span>
                         </dt>
                         <dd className="mt-0.5 truncate text-[14px] font-bold text-[#08123A] dark:text-slate-100">
-                          {profile.email || 'Kiritilmagan'}
+                          {profile.email || t('common.notProvided')}
                         </dd>
                       </div>
                     </dl>
@@ -1203,7 +1207,7 @@ export default function Profile() {
                       to="/"
                       className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] px-6 text-[12.5px] font-bold text-white shadow-sm"
                     >
-                      Chegirmalarni ko‘rish
+                      {t('profile.browseDeals')}
                     </Link>
                   </div>
                 )}
@@ -1221,7 +1225,7 @@ export default function Profile() {
                 className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50/90 text-[12.5px] font-bold text-rose-600 transition-colors hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-400"
               >
                 <LogOut className="h-4 w-4" />
-                <span>Chiqish</span>
+                <span>{t('header.logout')}</span>
               </button>
             </div>
           </div>
@@ -1230,18 +1234,18 @@ export default function Profile() {
 
       {showLogoutConfirm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/55 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#08123A]/55 p-4 backdrop-blur-sm"
           onClick={() => setShowLogoutConfirm(false)}
         >
           <div
-            className="w-full max-w-sm rounded-[26px] border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            className="w-full max-w-sm rounded-[26px] border border-slate-200/90 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-[16px] font-extrabold text-[#08123A] dark:text-white">
-              Tizimdan chiqish
+              {t('header.logoutTitle')}
             </h3>
             <p className="mt-1.5 text-[13px] text-slate-600 dark:text-slate-300">
-              Haqiqatan ham tizimdan chiqmoqchimisiz?
+              {t('header.logoutConfirm')}
             </p>
             <div className="mt-5 flex gap-2.5">
               <button
@@ -1249,14 +1253,14 @@ export default function Profile() {
                 onClick={() => setShowLogoutConfirm(false)}
                 className="flex-1 rounded-full border border-slate-200 bg-white py-2.5 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
               >
-                Yo‘q
+                {t('common.no')}
               </button>
               <button
                 type="button"
                 onClick={handleConfirmLogout}
                 className="flex-1 rounded-full bg-rose-500 py-2.5 text-[12.5px] font-bold text-white hover:bg-rose-600"
               >
-                Ha, chiqish
+                {t('header.logoutYes')}
               </button>
             </div>
           </div>

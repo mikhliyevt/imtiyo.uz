@@ -24,7 +24,9 @@ import Logo from '@/components/Logo';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import PageTopGradient from '@/components/PageTopGradient';
 import PageBreadcrumb from '@/components/PageBreadcrumb';
+import RegionSelect from '@/components/RegionSelect';
 import UniversitySelect from '@/components/UniversitySelect';
+import SearchableSelect from '@/components/SearchableSelect';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
 import { OAUTH_PENDING_KEY, OAUTH_RETURN_KEY, useStudent } from '@/lib/StudentContext';
@@ -130,6 +132,7 @@ export default function Welcome() {
   const [avatarPreview, setAvatarPreview] = useState('');
 
   const [error, setError] = useState('');
+  const [duplicateHint, setDuplicateHint] = useState(null); // 'email' | 'phone' | null
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -176,7 +179,7 @@ export default function Welcome() {
       if (res?.sent && res?.matched) {
         setTgCodeDelivered(true);
         setError('');
-        setInfo('✅ Raqamingiz tasdiqlandi! 6 xonali kod Telegram botingizga yuborildi.');
+        setInfo('✅ Raqamingiz tasdiqlandi! Kod Telegram botga yuborildi.');
       } else if (res?.mismatch) {
         setError(
           'Telegram raqamingiz saytda kiritilgan raqam bilan mos kelmadi! Botdagi xabarni tekshiring.'
@@ -196,7 +199,7 @@ export default function Welcome() {
     api
       .listUniversities()
       .then((list) => setUniversities(list || []))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const filteredSortedUniversities = useMemo(() => {
@@ -223,6 +226,7 @@ export default function Welcome() {
 
   const resetMessages = () => {
     setError('');
+    setDuplicateHint(null);
     setInfo('');
   };
 
@@ -248,7 +252,7 @@ export default function Welcome() {
     try {
       if (method === 'email') {
         await api.sendEmailOtpViaResend(email.trim().toLowerCase());
-        setInfo('Yangi 6 xonali tasdiqlash kodi emailingizga yuborildi!');
+        setInfo('Yangi tasdiqlash kodi emailingizga yuborildi!');
       } else if (phoneOtpChannel === 'telegram') {
         const tgSession = await api.initTelegramOtpSession(phone, true);
         setTgDeepLink(tgSession.deepLink);
@@ -299,26 +303,26 @@ export default function Welcome() {
 
     if (method === 'email') {
       if (!email.includes('@') || !email.includes('.')) {
-        setError('To‘g‘ri email manzilini kiriting');
+        setError(t('welcome.errEmail'));
         return;
       }
     } else if (phone.replace(/\D/g, '').length !== 9) {
-      setError('+998 99 999 99 99 formatida 9 ta raqam kiriting');
+      setError(t('welcome.errPhone'));
       return;
     }
 
     if (password.length < 6) {
-      setError('Parol kamida 6 ta belgidan iborat bo‘lishi kerak');
+      setError(t('welcome.errPassMin'));
       return;
     }
 
     if (mode === 'signup') {
       if (password !== confirmPassword) {
-        setError('Parollar bir-biriga mos kelmadi');
+        setError(t('welcome.passwordMismatch'));
         return;
       }
       if (method === 'email' && !emailTermsAccepted) {
-        setError('Foydalanish shartlari va Maxfiylik siyosatiga rozilik bildiring');
+        setError(t('welcome.errTerms'));
         return;
       }
     }
@@ -330,11 +334,15 @@ export default function Welcome() {
 
         if (method === 'email') {
           const cleanEmail = email.trim().toLowerCase();
-          const emailExists = existingProfiles.some(
-            (p) => p.email && p.email.trim().toLowerCase() === cleanEmail
-          );
+          const directHit = await api.findProfile({ email: cleanEmail }).catch(() => null);
+          const emailExists =
+            Boolean(directHit) ||
+            existingProfiles.some(
+              (p) => p.email && p.email.trim().toLowerCase() === cleanEmail
+            );
           if (emailExists) {
-            throw new Error('Bu email allaqachon ro‘yxatdan o‘tgan. «Kirish» bo‘limidan kiring.');
+            setDuplicateHint('email');
+            throw new Error(t('welcome.emailExists'));
           }
 
           await api.sendEmailOtpViaResend(cleanEmail);
@@ -345,14 +353,16 @@ export default function Welcome() {
           setBusy(false);
           return;
         } else {
-          const cleanDigits = phone.replace(/\D/g, '');
-          const phoneExists = existingProfiles.some(
-            (p) => p.phone && p.phone.replace(/\D/g, '').endsWith(cleanDigits)
-          );
-          if (phoneExists) {
-            throw new Error(
-              'Bu telefon raqam allaqachon ro‘yxatdan o‘tgan. «Kirish» bo‘limidan kiring.'
+          const cleanDigits = phone.replace(/\D/g, '').slice(-9);
+          const directHit = await api.findProfile({ phone }).catch(() => null);
+          const phoneExists =
+            Boolean(directHit) ||
+            existingProfiles.some(
+              (p) => p.phone && p.phone.replace(/\D/g, '').slice(-9) === cleanDigits
             );
+          if (phoneExists) {
+            setDuplicateHint('phone');
+            throw new Error(t('welcome.phoneExists'));
           }
 
           if (phoneOtpChannel === 'telegram') {
@@ -386,14 +396,14 @@ export default function Welcome() {
 
         if (signInErr) {
           if (!found) {
-            throw new Error('Email yoki parol noto‘g‘ri');
+            throw new Error(t('welcome.errBadLogin'));
           }
           const savedPass = localStorage.getItem(`imtiyo_pwd_${cleanEmail}`);
           if (
             (found.password && found.password !== password) ||
             (savedPass && savedPass !== password)
           ) {
-            throw new Error('Email yoki parol noto‘g‘ri');
+            throw new Error(t('welcome.errBadLogin'));
           }
         }
 
@@ -406,14 +416,14 @@ export default function Welcome() {
         const found = all.find(
           (p) => p.phone && p.phone.replace(/\D/g, '').endsWith(digits)
         );
-        if (!found) throw new Error('Bunday telefon raqam ro‘yxatdan o‘tmagan');
+        if (!found) throw new Error(t('welcome.errPhoneNotFound'));
 
         const savedPass = localStorage.getItem(`imtiyo_pwd_phone_${digits}`);
         if (
           (found.password && found.password !== password) ||
           (savedPass && savedPass !== password)
         ) {
-          throw new Error('Telefon raqam yoki parol noto‘g‘ri');
+          throw new Error(t('welcome.errBadPhoneLogin'));
         }
 
         await signIn({ provider: 'phone', phone: cleanPhone });
@@ -436,8 +446,8 @@ export default function Welcome() {
           throw new Error('Tasdiqlash kodi noto‘g‘ri yoki muddati tugagan');
         }
 
-        await supabase.auth.signUp({ email: cleanEmail, password }).catch(() => {});
-        await supabase.auth.updateUser({ password }).catch(() => {});
+        await supabase.auth.signUp({ email: cleanEmail, password }).catch(() => { });
+        await supabase.auth.updateUser({ password }).catch(() => { });
         localStorage.setItem(`imtiyo_pwd_${cleanEmail}`, password);
         localStorage.setItem(`imtiyo_verified_${cleanEmail}`, 'true');
       } else {
@@ -445,7 +455,7 @@ export default function Welcome() {
         if (phoneOtpChannel === 'telegram') {
           const isValid = await api.verifyPhoneOtpCode(phone, enteredCode);
           if (!isValid) {
-            throw new Error('Telegram botdan olingan 6 xonali kod noto‘g‘ri');
+            throw new Error('Telegram botdan olingan kod noto‘g‘ri');
           }
         }
         localStorage.setItem(`imtiyo_pwd_phone_${digits}`, password);
@@ -506,8 +516,19 @@ export default function Welcome() {
 
     const finalPhoneDigits = (method === 'phone' ? phone : extraPhone).replace(/\D/g, '');
     if (finalPhoneDigits.length !== 9) {
-      setError('Telefon raqamingizni to‘liq kiriting (9 ta raqam)');
+      setError(t('welcome.errPhone'));
       return;
+    }
+
+    if (method === 'email') {
+      const existingProfiles = await api.listProfiles().catch(() => []);
+      const phoneInUse = existingProfiles.some(
+        (p) => p.phone && p.phone.replace(/\D/g, '').slice(-9) === finalPhoneDigits
+      );
+      if (phoneInUse) {
+        setError(t('welcome.phoneExists'));
+        return;
+      }
     }
 
     setBusy(true);
@@ -651,16 +672,16 @@ export default function Welcome() {
   };
 
   const welcomeBreadcrumbs = useMemo(() => {
-    const baseLabel = mode === 'signup' ? 'Ro‘yxatdan o‘tish' : 'Kirish';
+    const baseLabel = mode === 'signup' ? t('welcome.signup') : t('welcome.login');
     if (step === 'form') {
       return [{ label: baseLabel }];
     }
     const stepLabel =
       step === 'otp'
-        ? 'Tasdiqlash kodi'
+        ? 'OTP'
         : step === 'details'
-          ? 'Talaba ma’lumotlari'
-          : 'Parolni tiklash';
+          ? t('welcome.detailsTitle')
+          : t('welcome.forgotTitle');
     return [
       {
         label: baseLabel,
@@ -671,7 +692,7 @@ export default function Welcome() {
       },
       { label: stepLabel },
     ];
-  }, [mode, step]);
+  }, [mode, step, t]);
 
   return (
     <div className="relative flex min-h-screen flex-col bg-white text-[#08123A] dark:bg-[#070d1f] dark:text-slate-100">
@@ -701,12 +722,12 @@ export default function Welcome() {
           <BrandEmblem />
           <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[#08123A] dark:text-white">
             {step === 'details'
-              ? 'Ma’lumotlaringizni kiriting'
+              ? t('welcome.detailsTitle')
               : step === 'forgot'
-                ? 'Parolni tiklash'
+                ? t('welcome.forgotTitle')
                 : mode === 'signup'
-                  ? 'Ro‘yxatdan o‘tish'
-                  : 'Tizimga kirish'}
+                  ? t('welcome.signup')
+                  : t('welcome.loginTitle')}
           </h1>
         </div>
 
@@ -725,7 +746,7 @@ export default function Welcome() {
                       : 'text-slate-500 dark:text-slate-400'
                   )}
                 >
-                  Ro‘yxatdan o‘tish
+                  {t('welcome.signup')}
                 </button>
                 <button
                   type="button"
@@ -737,7 +758,7 @@ export default function Welcome() {
                       : 'text-slate-500 dark:text-slate-400'
                   )}
                 >
-                  Kirish
+                  {t('welcome.login')}
                 </button>
               </div>
 
@@ -765,12 +786,14 @@ export default function Welcome() {
                     d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
                   />
                 </svg>
-                Google orqali davom etish
+                {t('welcome.google')}
               </button>
 
               <div className="my-3.5 flex items-center gap-3">
                 <span className="h-px flex-1 bg-slate-200/80 dark:bg-slate-700" />
-                <span className="text-[10.5px] font-semibold uppercase text-slate-400">yoki</span>
+                <span className="text-[10.5px] font-semibold uppercase text-slate-400">
+                  {t('welcome.or')}
+                </span>
                 <span className="h-px flex-1 bg-slate-200/80 dark:bg-slate-700" />
               </div>
 
@@ -789,7 +812,7 @@ export default function Welcome() {
                   )}
                 >
                   <Mail className="h-3.5 w-3.5" />
-                  Email
+                  {t('welcome.emailTab')}
                 </button>
                 <button
                   type="button"
@@ -805,7 +828,7 @@ export default function Welcome() {
                   )}
                 >
                   <Phone className="h-3.5 w-3.5" />
-                  Telefon raqam
+                  {t('welcome.phoneTab')}
                 </button>
               </div>
 
@@ -848,7 +871,11 @@ export default function Welcome() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     minLength={6}
-                    placeholder={mode === 'signup' ? 'Yangi parol (min. 6 ta belgi)' : 'Parolingiz'}
+                    placeholder={
+                      mode === 'signup'
+                        ? t('welcome.newPasswordPlaceholder')
+                        : t('welcome.passwordPlaceholder')
+                    }
                     className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                   />
                   <button
@@ -877,7 +904,7 @@ export default function Welcome() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       minLength={6}
-                      placeholder="Parolni tasdiqlang"
+                      placeholder={t('welcome.confirmPasswordPlaceholder')}
                       className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                     <button
@@ -896,7 +923,7 @@ export default function Welcome() {
 
                 {mode === 'signup' && confirmPassword && password !== confirmPassword && (
                   <p className="text-[11px] font-semibold text-rose-500">
-                    Parollar bir-biriga mos kelmadi
+                    {t('welcome.passwordMismatch')}
                   </p>
                 )}
 
@@ -904,7 +931,7 @@ export default function Welcome() {
                 {mode === 'signup' && method === 'phone' && (
                   <div className="pt-1">
                     <label className="mb-1.5 block text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                      Tasdiqlash kodini qabul qilish usuli:
+                      {t('welcome.otpChannelLabel')}
                     </label>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <button
@@ -922,7 +949,7 @@ export default function Welcome() {
                         </div>
                         <div className="min-w-0">
                           <p className="truncate text-[11.5px] font-extrabold">
-                            Telegram orqali kod olish
+                            {t('welcome.otpTelegramTitle')}
                           </p>
                           <p className="truncate text-[10px] font-semibold text-[#1D6FF2] dark:text-sky-400">
                             @imtiyokod_bot
@@ -945,9 +972,9 @@ export default function Welcome() {
                         </div>
                         <div className="min-w-0">
                           <p className="truncate text-[11.5px] font-extrabold">
-                            SMS orqali kod olish
+                            {t('welcome.otpSmsTitle')}
                           </p>
-                          <p className="truncate text-[10px] text-slate-400">Telefon raqamga SMS</p>
+                          <p className="truncate text-[10px] text-slate-400">{t('welcome.otpSmsSub')}</p>
                         </div>
                       </button>
                     </div>
@@ -964,7 +991,7 @@ export default function Welcome() {
                       className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-[#1D6FF2]"
                     />
                     <span>
-                      Tizimga kirish orqali siz IMTIYOning{' '}
+                      {t('welcome.termsPrefix')}{' '}
                       <a
                         href="/terms"
                         target="_blank"
@@ -972,9 +999,9 @@ export default function Welcome() {
                         onClick={(e) => e.stopPropagation()}
                         className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                       >
-                        Foydalanish shartlari
+                        {t('nav.terms')}
                       </a>{' '}
-                      va{' '}
+                      {t('welcome.termsAnd')}{' '}
                       <a
                         href="/privacy"
                         target="_blank"
@@ -982,9 +1009,9 @@ export default function Welcome() {
                         onClick={(e) => e.stopPropagation()}
                         className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                       >
-                        Maxfiylik siyosatiga
-                      </a>{' '}
-                      rozilik bildirasiz
+                        {t('nav.privacy')}
+                      </a>
+                      {t('welcome.termsSuffix') ? ` ${t('welcome.termsSuffix')}` : ''}
                     </span>
                   </label>
                 )}
@@ -992,25 +1019,25 @@ export default function Welcome() {
                 {/* TELEFON SIGNUP UCHUN PASSIV ESLATMA */}
                 {mode === 'signup' && method === 'phone' && (
                   <p className="pt-1 text-center text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    Ro‘yxatdan o‘tish tugmasini bosish orqali siz IMTIYOning{' '}
+                    {t('welcome.termsSignupPrefix')}{' '}
                     <a
                       href="/terms"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                     >
-                      Foydalanish shartlari
+                      {t('nav.terms')}
                     </a>{' '}
-                    va{' '}
+                    {t('welcome.termsAnd')}{' '}
                     <a
                       href="/privacy"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-extrabold text-[#1D6FF2] hover:underline dark:text-sky-400"
                     >
-                      Maxfiylik siyosatiga
-                    </a>{' '}
-                    rozilik bildirasiz.
+                      {t('nav.privacy')}
+                    </a>
+                    {t('welcome.termsSuffix') ? ` ${t('welcome.termsSuffix')}` : ''}.
                   </p>
                 )}
 
@@ -1025,12 +1052,39 @@ export default function Welcome() {
                       }}
                       className="text-[11.5px] font-semibold text-[#1D6FF2] hover:underline dark:text-sky-400"
                     >
-                      Parolni unutdingizmi?
+                      {t('welcome.forgotPassword')}
                     </button>
                   </div>
                 )}
 
-                {error && <p className="text-[11.5px] font-semibold text-rose-500">{error}</p>}
+                {error && (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50/90 p-3 text-[12px] text-rose-700 dark:border-rose-500/35 dark:bg-rose-950/45 dark:text-rose-200">
+                    <p className="font-bold leading-snug">{error}</p>
+                    {duplicateHint && (
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError('');
+                            setDuplicateHint(null);
+                            setForgotStep('input');
+                            setStep('forgot');
+                          }}
+                          className="rounded-full bg-[#002D96] px-3.5 py-1.5 text-[11px] font-extrabold text-white shadow-sm transition-colors hover:bg-[#1D6FF2]"
+                        >
+                          {t('welcome.goForgotCta')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => switchAuthMode('signin')}
+                          className="rounded-full border border-rose-200 bg-white px-3.5 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-slate-900 dark:text-rose-300"
+                        >
+                          {t('welcome.goSigninCta')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <Button
                   type="submit"
@@ -1038,25 +1092,25 @@ export default function Welcome() {
                   className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {busy
-                    ? 'Kutilmoqda...'
+                    ? t('welcome.wait')
                     : mode === 'signup'
-                      ? 'Ro‘yxatdan o‘tish'
-                      : 'Kirish'}
+                      ? t('welcome.signup')
+                      : t('welcome.login')}
                 </Button>
               </form>
 
               {/* UIVERSE #1 (satyamchaudharydev) — REGISTER <-> LOGIN ANIMATED SWITCH */}
               <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5 border-t border-slate-100 pt-4 dark:border-slate-800">
                 <span className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
-                  {mode === 'signup' ? 'Akkauntingiz bormi?' : 'Hali ro‘yxatdan o‘tmadingizmi?'}
+                  {mode === 'signup' ? t('welcome.haveAccount') : t('welcome.noAccount')}
                 </span>
                 <button
                   type="button"
                   onClick={() => switchAuthMode(mode === 'signup' ? 'signin' : 'signup')}
                   className="imtiyo-auth-switch"
                 >
-                  <p data-text={mode === 'signup' ? 'Kirish' : 'Ro‘yxatdan o‘tish'}>
-                    {mode === 'signup' ? 'Kirish' : 'Ro‘yxatdan o‘tish'}
+                  <p data-text={mode === 'signup' ? t('welcome.login') : t('welcome.signup')}>
+                    {mode === 'signup' ? t('welcome.login') : t('welcome.signup')}
                   </p>
                   <ArrowRight />
                 </button>
@@ -1068,23 +1122,21 @@ export default function Welcome() {
           {step === 'otp' && (
             <div className="space-y-3.5 text-center">
               <p className="text-[15px] font-extrabold text-[#08123A] dark:text-white">
-                Tasdiqlash kodini kiriting
+                {t('welcome.enterOtp')}
               </p>
 
               {method === 'email' ? (
                 <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                  <strong>{email}</strong> manziliga 6 xonali tasdiqlash kodi yuborildi
+                  <strong>{email}</strong> {t('welcome.otpSentToEmail')}
                 </p>
               ) : phoneOtpChannel === 'telegram' ? (
                 <div className="space-y-2.5 rounded-2xl border border-[#00A9FF]/30 bg-[#00A9FF]/[0.06] p-3.5 text-left dark:border-sky-500/30 dark:bg-sky-500/10">
                   <p className="text-[12px] font-semibold leading-relaxed text-[#08123A] dark:text-slate-200">
-                    1. Quyidagi tugma orqali <strong>@{tgBotUsername}</strong> botiga o‘ting va{' '}
-                    <strong>«Start»</strong> bosing.
+                    1. <strong>@{tgBotUsername}</strong> → <strong>«Start»</strong>
                     <br />
-                    2. Bot ichidagi <strong>«📱 Telefon raqamni yuborish»</strong> tugmasini bosing.
+                    2. <strong>«📱 Share Phone / Telefon raqamni yuborish»</strong>
                     <br />
-                    3. Raqamingiz <strong>+998 {formatUzPhone(phone)}</strong> bilan bir xil bo‘lsa,
-                    bot sizga 6 xonali kodni beradi!
+                    3. <strong>+998 {formatUzPhone(phone)}</strong>
                   </p>
                   <a
                     href={tgDeepLink || `https://t.me/${tgBotUsername}`}
@@ -1093,19 +1145,18 @@ export default function Welcome() {
                     className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#0088CC] text-[12.5px] font-extrabold text-white shadow-sm transition-transform hover:scale-[1.01]"
                   >
                     <Send className="h-4 w-4" />
-                    @{tgBotUsername} botga o‘tish va kod olish
+                    @{tgBotUsername} {t('welcome.tgOpenBot')}
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                   {tgCodeDelivered && (
                     <p className="flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-4 w-4" />
-                      Raqamingiz tasdiqlandi! Kod Telegram botingizga yuborildi.
+                      {t('welcome.tgDelivered')}
                     </p>
                   )}
                 </div>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[12px] font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300">
-                  SMS provayder hozirda ulanish jarayonida. Iltimos,{' '}
                   <button
                     type="button"
                     onClick={async () => {
@@ -1117,8 +1168,7 @@ export default function Welcome() {
                     className="font-extrabold text-[#002D96] underline dark:text-sky-300"
                   >
                     Telegram bot (@imtiyokod_bot)
-                  </button>{' '}
-                  orqali kod oling.
+                  </button>
                 </div>
               )}
 
@@ -1144,18 +1194,18 @@ export default function Welcome() {
                 className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white"
               >
                 <ShieldCheck className="mr-2 h-4 w-4" />
-                {busy ? 'Tekshirilmoqda...' : 'Kodni tasdiqlash'}
+                {busy ? t('welcome.verifying') : t('welcome.verifyCode')}
               </Button>
 
               <div className="flex items-center justify-between pt-2 text-[12px]">
                 <span className="text-slate-500 dark:text-slate-400">
                   {timer > 0 ? (
                     <>
-                      Qayta yuborish:{' '}
+                      {t('welcome.resendIn')}{' '}
                       <strong className="text-[#002D96] dark:text-sky-400">{timer}s</strong>
                     </>
                   ) : (
-                    'Kod muddati tugadi'
+                    t('welcome.codeExpired')
                   )}
                 </span>
                 <button
@@ -1170,7 +1220,7 @@ export default function Welcome() {
                   )}
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
-                  Kodni qayta yuborish
+                  {t('welcome.resendCode')}
                 </button>
               </div>
             </div>
@@ -1186,7 +1236,7 @@ export default function Welcome() {
                   ) : (
                     <div className="flex flex-col items-center text-slate-400 group-hover:text-[#002D96] dark:group-hover:text-sky-300">
                       <Camera className="h-5 w-5" />
-                      <span className="mt-0.5 text-[9.5px] font-bold">Rasm</span>
+                      <span className="mt-0.5 text-[9.5px] font-bold">{t('welcome.photoLabel')}</span>
                     </div>
                   )}
                   <input
@@ -1196,7 +1246,7 @@ export default function Welcome() {
                     className="hidden"
                   />
                 </label>
-                <span className="mt-1 text-[10.5px] text-slate-400">Profil rasmi (ixtiyoriy)</span>
+                <span className="mt-1 text-[10.5px] text-slate-400">{t('welcome.photoOptional')}</span>
               </div>
 
               <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
@@ -1204,7 +1254,7 @@ export default function Welcome() {
                 <input
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Ismingiz"
+                  placeholder={t('welcome.firstName')}
                   className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 />
               </div>
@@ -1214,30 +1264,19 @@ export default function Welcome() {
                 <input
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Familiyangiz"
+                  placeholder={t('welcome.lastName')}
                   className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                 />
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
-                <select
-                  value={region}
-                  onChange={(e) => {
-                    setRegion(e.target.value);
-                    setUniversity('');
-                    setCustomInstitution('');
-                  }}
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
-                >
-                  <option value="">Viloyatingizni tanlang</option>
-                  {REGIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <RegionSelect
+                value={region}
+                onChange={(val) => {
+                  setRegion(val);
+                  setUniversity('');
+                  setCustomInstitution('');
+                }}
+              />
 
               <UniversitySelect
                 universities={filteredSortedUniversities}
@@ -1246,51 +1285,42 @@ export default function Welcome() {
                   setUniversity(val);
                   if (val !== 'Boshqa') setCustomInstitution('');
                 }}
-                placeholder={
-                  region ? 'Ta’lim muassasangizni qidiring yoki tanlang' : 'Avval viloyatingizni tanlang'
-                }
-                otherLabel="Boshqa"
               />
 
               {university === 'Boshqa' && (
                 <div>
                   <label className="mb-1 block text-[11px] font-bold text-[#002D96] dark:text-sky-300">
-                    Ta’lim muassasangiz
+                    {t('select.customUniversityLabel')}
                   </label>
                   <div className="flex items-center gap-2.5 rounded-2xl border border-[#1D6FF2]/40 bg-[#1D6FF2]/[0.04] px-3.5 py-2.5 dark:bg-sky-500/10">
                     <Building2 className="h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
                     <input
                       value={customInstitution}
                       onChange={(e) => setCustomInstitution(e.target.value)}
-                      placeholder="Ta’lim muassasangiz"
+                      placeholder={t('select.customUniversityPlaceholder')}
                       className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                   </div>
                 </div>
               )}
 
-              {/* KURS MAYDONI (1 - 6 DROPDOWN) */}
-              <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                <GraduationCap className="h-4 w-4 shrink-0 text-slate-400" />
-                <select
-                  required
-                  value={course}
-                  onChange={(e) => setCourse(e.target.value)}
-                  className="w-full bg-transparent text-[13px] font-semibold text-[#08123A] outline-none dark:text-white"
-                >
-                  <option value="">Kursingizni tanlang (1–6)</option>
-                  {COURSE_OPTIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {c}-kurs
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* KURS MAYDONI (1 - 6 DROPDOWN — BIR XIL STYLE) */}
+              <SearchableSelect
+                options={COURSE_OPTIONS.map((c) => ({
+                  value: c,
+                  label: `${c}${t('common.courseSuffix')}`,
+                }))}
+                value={course}
+                onChange={setCourse}
+                searchable={false}
+                placeholder={t('select.coursePlaceholder')}
+                icon={GraduationCap}
+              />
 
               <div>
                 <label className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
                   <Calendar className="h-3.5 w-3.5" />
-                  Tug‘ilgan sana (Kun / Oy / Yil)
+                  {t('welcome.birthDateLabel')}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <select
@@ -1298,7 +1328,7 @@ export default function Welcome() {
                     onChange={(e) => setBirthDay(e.target.value)}
                     className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
-                    <option value="">Kun</option>
+                    <option value="">{t('welcome.day')}</option>
                     {DAYS.map((d) => (
                       <option key={d} value={d}>
                         {d}
@@ -1311,19 +1341,14 @@ export default function Welcome() {
                     onChange={(e) => setBirthMonth(e.target.value)}
                     className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
-                    <option value="">Oy</option>
-                    <option value="01">Yanvar</option>
-                    <option value="02">Fevral</option>
-                    <option value="03">Mart</option>
-                    <option value="04">Aprel</option>
-                    <option value="05">May</option>
-                    <option value="06">Iyun</option>
-                    <option value="07">Iyul</option>
-                    <option value="08">Avgust</option>
-                    <option value="09">Sentabr</option>
-                    <option value="10">Oktabr</option>
-                    <option value="11">Noyabr</option>
-                    <option value="12">Dekabr</option>
+                    <option value="">{t('welcome.month')}</option>
+                    {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(
+                      (m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      )
+                    )}
                   </select>
 
                   <select
@@ -1331,7 +1356,7 @@ export default function Welcome() {
                     onChange={(e) => setBirthYear(e.target.value)}
                     className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-[12.5px] font-semibold text-[#08123A] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
-                    <option value="">Yil</option>
+                    <option value="">{t('welcome.year')}</option>
                     {YEARS.map((y) => (
                       <option key={y} value={y}>
                         {y}
@@ -1352,7 +1377,7 @@ export default function Welcome() {
                       : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
-                  O‘g‘il bola
+                  {t('gender.male')}
                 </button>
                 <button
                   type="button"
@@ -1364,7 +1389,7 @@ export default function Welcome() {
                       : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                   )}
                 >
-                  Qiz bola
+                  {t('gender.female')}
                 </button>
               </div>
 
@@ -1397,7 +1422,7 @@ export default function Welcome() {
                 disabled={busy}
                 className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white shadow-md"
               >
-                {busy ? 'Saqlanmoqda...' : 'Ro‘yxatdan o‘tishni yakunlash'}
+                {busy ? t('common.saving') : t('welcome.finishSignup')}
               </Button>
             </form>
           )}
@@ -1421,7 +1446,7 @@ export default function Welcome() {
                   )}
                 >
                   <Mail className="h-3.5 w-3.5" />
-                  Email
+                  {t('welcome.emailTab')}
                 </button>
                 <button
                   type="button"
@@ -1438,7 +1463,7 @@ export default function Welcome() {
                   )}
                 >
                   <Phone className="h-3.5 w-3.5" />
-                  Telefon raqam
+                  {t('welcome.phoneTab')}
                 </button>
               </div>
 
@@ -1482,7 +1507,7 @@ export default function Welcome() {
                     disabled={busy}
                     className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white"
                   >
-                    {busy ? 'Yuborilmoqda...' : 'Tasdiqlash kodini olish'}
+                    {busy ? t('help.sending') : t('welcome.getResetCode')}
                   </Button>
                 </form>
               ) : (
@@ -1495,7 +1520,7 @@ export default function Welcome() {
                       className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#0088CC] text-[12px] font-extrabold text-white"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      @{tgBotUsername} botdan kodni olish
+                      @{tgBotUsername} {t('welcome.tgGetCode')}
                     </a>
                   )}
 
@@ -1503,7 +1528,7 @@ export default function Welcome() {
                     value={enteredCode}
                     onChange={(e) => setEnteredCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     inputMode="numeric"
-                    placeholder="6 xonali kod"
+                    placeholder={t('welcome.enterCodePlaceholder')}
                     className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 text-center text-[18px] font-extrabold tracking-[0.3em] text-[#002D96] outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-sky-300"
                   />
 
@@ -1514,7 +1539,7 @@ export default function Welcome() {
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       minLength={6}
-                      placeholder="Yangi parol (min. 6 ta belgi)"
+                      placeholder={t('welcome.newPasswordPlaceholder')}
                       className="w-full bg-transparent text-[13.5px] font-semibold text-[#08123A] outline-none dark:text-white"
                     />
                     <button
@@ -1542,7 +1567,7 @@ export default function Welcome() {
                     disabled={busy}
                     className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white"
                   >
-                    {busy ? 'Saqlanmoqda...' : 'Yangi parolni saqlash'}
+                    {busy ? t('common.saving') : t('welcome.saveNewPassword')}
                   </Button>
                 </form>
               )}

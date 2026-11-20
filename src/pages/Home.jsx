@@ -5,6 +5,7 @@ import AppShell, { openAuthPromptModal } from '@/components/AppShell';
 import CategoryPills from '@/components/CategoryPills';
 import CardImageBlur from '@/components/CardImageBlur';
 import { HomeGridSkeleton } from '@/components/PageSkeleton';
+import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,7 @@ function getViewportMode() {
 }
 
 export default function Home() {
+  const { t, lang } = useLang();
   const { profile } = useStudent();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -100,9 +102,17 @@ export default function Home() {
       categories.find((c) => c.id === category) || {
         id: 'all',
         label_uz: 'Tavsiya etilganlar',
+        label_ru: 'Рекомендуемые',
+        label_en: 'Recommended',
       },
     [categories, category]
   );
+
+  const activeCategoryLabel =
+    (lang === 'ru' && activeCategoryObj.label_ru) ||
+    (lang === 'en' && activeCategoryObj.label_en) ||
+    activeCategoryObj.label_uz ||
+    t('header.recommended');
 
   const categoryBrands = useMemo(() => {
     if (category === 'all') return brands;
@@ -243,6 +253,8 @@ export default function Home() {
       const brandOffers = offers.filter((o) => String(o.brand_id) === String(brand.id));
       if (brandOffers.length > 0) {
         brandOffers.forEach((o) => {
+          const locTitle =
+            o.title?.[lang] || o[`title_${lang}`] || o.title_uz || o.title?.uz || brand.name;
           cards.push({
             id: o.id,
             brandId: brand.id,
@@ -252,13 +264,15 @@ export default function Home() {
             coverUrl: o.image_url || brand.cover_url,
             accent: brand.accent || '#002D96',
             accent2: brand.accent2 || '#1D6FF2',
-            title: `${o.discount || brand.discount} — ${o.title_uz || o.title?.uz || brand.name}`,
+            title: `${o.discount || brand.discount} — ${locTitle}`,
             validUntil: o.valid_until || brand.valid_until || '31/12/2026',
             redemption: o.redemption || brand.redemption || 'qr',
             activations: o.activations_count || brand.activations_count || 320,
           });
         });
       } else {
+        const locTagline =
+          brand.tagline?.[lang] || brand.tagline?.uz || `${brand.name} · ${t('app.tagline')}`;
         cards.push({
           id: `default-${brand.id}`,
           brandId: brand.id,
@@ -268,7 +282,7 @@ export default function Home() {
           coverUrl: brand.cover_url,
           accent: brand.accent || '#002D96',
           accent2: brand.accent2 || '#1D6FF2',
-          title: `${brand.discount} — ${brand.tagline?.uz || `${brand.name} talaba chegirmasi`}`,
+          title: `${brand.discount} — ${locTagline}`,
           validUntil: brand.valid_until || '31/12/2026',
           redemption: brand.redemption || 'qr',
           activations: brand.activations_count || 280,
@@ -276,7 +290,7 @@ export default function Home() {
       }
     });
     return cards;
-  }, [categoryBrands, offers]);
+  }, [categoryBrands, offers, lang, t]);
 
   const handleToggleLike = (e, offerId) => {
     e.preventDefault();
@@ -297,7 +311,12 @@ export default function Home() {
     if (!item) return null;
     const itemOffer = offers.find((o) => String(o.brand_id) === String(item.id));
     const slideHeadline =
-      itemOffer?.title_uz || item.tagline?.uz || `${item.discount} talaba chegirmasi`;
+      itemOffer?.title?.[lang] ||
+      itemOffer?.[`title_${lang}`] ||
+      itemOffer?.title_uz ||
+      item.tagline?.[lang] ||
+      item.tagline?.uz ||
+      `${item.discount} · ${t('app.tagline')}`;
 
     return (
       <div
@@ -336,7 +355,7 @@ export default function Home() {
 
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF3E6]/95 px-3 py-1 text-[11.5px] font-extrabold text-[#D9531E] shadow-sm backdrop-blur-md">
             <Flame className="h-3.5 w-3.5 fill-[#FF6B00] text-[#FF6B00]" />
-            {(item.activations_count || 420).toLocaleString()} aktivatsiya
+            {(item.activations_count || 420).toLocaleString()} {t('common.activations')}
           </span>
         </div>
 
@@ -346,8 +365,9 @@ export default function Home() {
             {item.discount} · {slideHeadline}
           </h3>
           <p className="mt-1 text-[11.5px] font-medium text-white/80">
-            Amal qiladi: {item.valid_until || '31/12/2026'} gacha •{' '}
-            {item.redemption === 'app' ? 'Online' : 'Kassada'}
+            {t('common.validUntil')}: {item.valid_until || '31/12/2026'}
+            {t('common.until') ? ` ${t('common.until')}` : ''} •{' '}
+            {item.redemption === 'app' ? t('common.online') : t('common.onsite')}
           </p>
         </div>
       </div>
@@ -355,10 +375,14 @@ export default function Home() {
   };
 
   const breadcrumbs =
-    category === 'all' ? [] : [{ label: activeCategoryObj.label_uz }];
+    category === 'all' ? [] : [{ label: activeCategoryLabel }];
 
   return (
-    <AppShell breadcrumbs={breadcrumbs} showImtiyoAbout={true}>
+    <AppShell
+      breadcrumbs={breadcrumbs}
+      showImtiyoAbout={true}
+      showAppPromo={category === 'all'}
+    >
       <div className="space-y-8">
         {/* 1. KATEGORIYALAR NAVIGATSIYASI */}
         <CategoryPills value={category} onChange={setCategory} />
@@ -368,11 +392,10 @@ export default function Home() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-[26px] font-black tracking-tight text-[#08123A] dark:text-white md:text-[32px]">
-                {activeCategoryObj.label_uz}
+                {activeCategoryLabel}
               </h1>
               <p className="mt-0.5 text-[13.5px] font-medium text-slate-500 dark:text-slate-400">
-                Eng so‘nggi talaba chegirmalari va imtiyozlarini o‘tkazib yubormang — har kuni
-                yangilanadi!
+                {t('home.subtitle')}
               </p>
             </div>
 
@@ -381,7 +404,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => stepSlide(-1)}
-                  aria-label="Oldingi slayd"
+                  aria-label={t('home.prevSlide')}
                   className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white text-[#08123A] shadow-sm hover:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -389,7 +412,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => stepSlide(1)}
-                  aria-label="Keyingi slayd"
+                  aria-label={t('home.nextSlide')}
                   className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white text-[#08123A] shadow-sm hover:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -550,14 +573,14 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <h2 className="text-[19px] font-extrabold text-[#08123A] dark:text-white">
                       {category === 'all'
-                        ? 'Hamkorlar (Partners)'
-                        : `${activeCategoryObj.label_uz} bo‘yicha hamkorlar`}
+                        ? t('home.partners')
+                        : t('home.partnersByCat', { cat: activeCategoryLabel })}
                     </h2>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => scrollPartners(-1)}
-                        aria-label="Chapga surish"
+                        aria-label={t('home.prevSlide')}
                         className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-[#1D6FF2] hover:text-[#002D96] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-400"
                       >
                         <ChevronLeft className="h-4 w-4" />
@@ -565,7 +588,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => scrollPartners(1)}
-                        aria-label="O‘ngga surish"
+                        aria-label={t('home.nextSlide')}
                         className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-[#1D6FF2] hover:text-[#002D96] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-400"
                       >
                         <ChevronRight className="h-4 w-4" />
@@ -615,8 +638,8 @@ export default function Home() {
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-[20px] font-extrabold text-[#08123A] dark:text-white">
                     {category === 'all'
-                      ? 'Barcha chegirmalar'
-                      : `${activeCategoryObj.label_uz} bo‘yicha barcha chegirmalar`}
+                      ? t('home.allDiscounts')
+                      : t('home.discountsByCat', { cat: activeCategoryLabel })}
                   </h2>
                   <span className="rounded-full bg-[#1D6FF2]/10 px-3 py-0.5 text-[12px] font-extrabold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
                     {categoryDiscountCards.length}
@@ -701,14 +724,15 @@ export default function Home() {
 
                           <div className="mt-3 space-y-2">
                             <p className="text-[11.5px] font-medium text-slate-400">
-                              {card.validUntil} gacha •{' '}
-                              {card.redemption === 'app' ? 'Online' : 'Kassada'}
+                              {card.validUntil}
+                              {t('common.until') ? ` ${t('common.until')}` : ''} •{' '}
+                              {card.redemption === 'app' ? t('common.online') : t('common.onsite')}
                             </p>
 
                             <div>
                               <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF3E6] px-2.5 py-0.5 text-[11px] font-extrabold text-[#D9531E] dark:bg-orange-500/15 dark:text-orange-300">
                                 <Flame className="h-3 w-3 fill-[#FF6B00] text-[#FF6B00]" />
-                                {Number(card.activations).toLocaleString()} aktivatsiya
+                                {Number(card.activations).toLocaleString()} {t('common.activations')}
                               </span>
                             </div>
                           </div>

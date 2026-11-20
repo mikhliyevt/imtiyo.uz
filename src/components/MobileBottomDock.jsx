@@ -1,20 +1,19 @@
 import { NavLink } from 'react-router-dom';
 import { Compass, Home, MapPin, User } from 'lucide-react';
+import { useLang } from '@/lib/LanguageContext';
 
 const MOBILE_DOCK_ITEMS = [
-  { to: '/', icon: Home, label: 'Asosiy', end: true },
-  { to: '/explore', icon: Compass, label: 'Chegirmalar', end: false },
-  { to: '/map', icon: MapPin, label: 'Xarita', end: false },
-  { to: '/profile', icon: User, label: 'Profil', end: false },
+  { to: '/', icon: Home, labelKey: 'nav.home', end: true },
+  { to: '/explore', icon: Compass, labelKey: 'nav.deals', end: false },
+  { to: '/map', icon: MapPin, labelKey: 'nav.map', end: false },
+  { to: '/profile', icon: User, labelKey: 'nav.profile', end: false },
 ];
 
-/**
- * Floating liquid-glass bottom dock strictly for mobile screens (md:hidden).
- * Adapted from Uiverse (mymiamo) to IMTIYO's brand color system.
- */
 export default function MobileBottomDock() {
+  const { t } = useLang();
+
   return (
-    <nav aria-label="Mobil navigatsiya" className="imtiyo-mobile-dock md:hidden">
+    <nav aria-label="Mobile navigation" className="imtiyo-mobile-dock md:hidden">
       {MOBILE_DOCK_ITEMS.map((item) => {
         const Icon = item.icon;
         return (
@@ -25,7 +24,7 @@ export default function MobileBottomDock() {
             className={({ isActive }) => (isActive ? 'active' : '')}
           >
             <Icon />
-            <span>{item.label}</span>
+            <span>{t(item.labelKey)}</span>
           </NavLink>
         );
       })}

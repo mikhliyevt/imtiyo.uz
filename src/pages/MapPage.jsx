@@ -62,7 +62,7 @@ export default function MapPage() {
     .sort((a, b) => a.distance - b.distance);
 
   return (
-    <AppShell breadcrumbs={[{ label: 'Filiallar xaritasi' }]}>
+    <AppShell breadcrumbs={[{ label: t('nav.mapFull') }]}>
       <header className="mb-4">
         <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em] text-[#08123A] dark:text-white">
           {t('map.title')}

@@ -1,21 +1,20 @@
 import { Link } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
+import { useLang } from '@/lib/LanguageContext';
 import { cn } from '@/lib/utils';
 
-/**
- * Unified top-left Breadcrumb component used across every page.
- * Each item: { label: string, to?: string, onClick?: () => void }
- * The final item is always rendered as the active non-clickable current page.
- */
-export default function PageBreadcrumb({ items = [], rootLabel = 'Bosh sahifa', rootTo = '/', className }) {
+export default function PageBreadcrumb({ items = [], rootLabel, rootTo = '/', className }) {
+  const langCtx = useLang();
+  const defaultRoot = rootLabel || (langCtx?.t ? langCtx.t('nav.homeBreadcrumb') : 'Bosh sahifa');
+
   const normalized =
     items.length > 0 && items[0]?.isRoot
       ? items
-      : [{ label: rootLabel, to: rootTo, isRoot: true }, ...items];
+      : [{ label: defaultRoot, to: rootTo, isRoot: true }, ...items];
 
   return (
     <nav
-      aria-label="Yo‘nalish"
+      aria-label="Breadcrumb"
       className={cn(
         'mb-4 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-slate-600 dark:text-slate-400',
         className
@@ -26,7 +25,7 @@ export default function PageBreadcrumb({ items = [], rootLabel = 'Bosh sahifa', 
         const isFirst = idx === 0;
 
         return (
-          <span key={`${item.label}-${idx}`} className="inline-flex items-center gap-1.5 min-w-0">
+          <span key={`${item.label}-${idx}`} className="inline-flex min-w-0 items-center gap-1.5">
             {idx > 0 && (
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
             )}

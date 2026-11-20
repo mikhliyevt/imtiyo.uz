@@ -5,8 +5,10 @@ import {
   ArrowDown,
   ArrowUp,
   BarChart3,
+  Bell,
   Building2,
   Check,
+  CheckCircle2,
   ChevronRight,
   Edit3,
   ExternalLink,
@@ -17,7 +19,9 @@ import {
   Loader2,
   LogOut,
   MapPin,
+  Megaphone,
   Menu,
+  MessageSquare,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -26,6 +30,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Send,
   ShieldCheck,
   Smartphone,
   Store,
@@ -41,6 +46,7 @@ import BrandForm from '@/components/admin/BrandForm';
 import OfferForm from '@/components/admin/OfferForm';
 import VerificationPill from '@/components/VerificationPill';
 import UniversitySelect from '@/components/UniversitySelect';
+import RegionSelect from '@/components/RegionSelect';
 import { CATEGORY_ICON_MAP } from '@/components/CategoryPills';
 import Logo from '@/components/Logo';
 import PageTopGradient from '@/components/PageTopGradient';
@@ -50,6 +56,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { useTheme } from '@/lib/ThemeContext';
+import { useScrollLock } from '@/lib/useScrollLock';
 import {
   ADMIN_PERMISSION_LIST,
   api,
@@ -69,6 +76,8 @@ const ALL_SECTIONS = [
   { id: 'deals', slug: 'brendlar', label: 'Brend va e’lonlar', icon: Store },
   { id: 'categories', slug: 'kategoriyalar', label: 'Kategoriyalar', icon: Layers },
   { id: 'universities', slug: 'universitetlar', label: 'Universitetlar', icon: Building2 },
+  { id: 'messages', slug: 'xabarlar', label: 'Xabarlar', icon: MessageSquare },
+  { id: 'notifications', slug: 'bildirishnomalar', label: 'Bildirishnomalar', icon: Megaphone },
   { id: 'admins', slug: 'adminlar', label: 'Adminlar va Huquqlar', icon: KeyRound, superOnly: true },
 ];
 
@@ -169,6 +178,32 @@ function parseAdminPathname(pathname) {
     };
   }
 
+  if (seg1 === 'xabarlar' || seg1 === 'messages') {
+    return {
+      section: 'messages',
+      studentTab: 'pending',
+      hasExplicitStudentTab: false,
+      selectedBrandId: null,
+      showBrandForm: false,
+      editBrandMode: false,
+      uniViewMode: 'all',
+      hasExplicitUniTab: false,
+    };
+  }
+
+  if (seg1 === 'bildirishnomalar' || seg1 === 'notifications') {
+    return {
+      section: 'notifications',
+      studentTab: 'pending',
+      hasExplicitStudentTab: false,
+      selectedBrandId: null,
+      showBrandForm: false,
+      editBrandMode: false,
+      uniViewMode: 'all',
+      hasExplicitUniTab: false,
+    };
+  }
+
   if (seg1 === 'adminlar' || seg1 === 'admins') {
     return {
       section: 'admins',
@@ -202,7 +237,16 @@ function normalizeAdminSession(rawSession) {
     rawSession.role === 'superadmin' ||
     loginStr === 'admin';
   const defaultPerms = isSuper
-    ? ['stats', 'students', 'deals', 'categories', 'universities', 'admins']
+    ? [
+        'stats',
+        'students',
+        'deals',
+        'categories',
+        'universities',
+        'messages',
+        'notifications',
+        'admins',
+      ]
     : ['stats', 'students'];
   return {
     ...rawSession,
@@ -327,8 +371,37 @@ export default function Admin() {
   const [newAdminPerms, setNewAdminPerms] = useState(['stats', 'students']);
   const [savingNewAdmin, setSavingNewAdmin] = useState(false);
 
+  // Talaba xabarlari (Yordam & Shikoyatlar)
+  const [supportMessages, setSupportMessages] = useState([]);
+  const [msgFilterStatus, setMsgFilterStatus] = useState('all');
+  const [msgFilterCategory, setMsgFilterCategory] = useState('all');
+  const [msgSearch, setMsgSearch] = useState('');
+  const [msgDrafts, setMsgDrafts] = useState({});
+  const [savingMsgId, setSavingMsgId] = useState(null);
+
+  // Admin bildirishnomalar yuborish (registered | guest | all)
+  const [broadcastNotifications, setBroadcastNotifications] = useState([]);
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifAudience, setNotifAudience] = useState('all');
+  const [notifTone, setNotifTone] = useState('info');
+  const [notifFilterAudience, setNotifFilterAudience] = useState('all');
+  const [sendingNotif, setSendingNotif] = useState(false);
+
   // Unsaved changes confirmation modal state
   const [pendingNavAction, setPendingNavAction] = useState(null);
+
+  // Lock background page scroll while any Admin modal or mobile drawer is open
+  useScrollLock(
+    Boolean(
+      selectedStudent ||
+        previewDocPerson ||
+        approvingCustomUni ||
+        showLogoutConfirm ||
+        pendingNavAction ||
+        drawerOpen
+    )
+  );
 
   const allowedSections = useMemo(() => {
     if (!session) return [];
@@ -397,6 +470,23 @@ export default function Admin() {
     });
   }, [draftAdminPerms, admins]);
 
+  const isMessagesDirty = useMemo(() => {
+    return Object.entries(msgDrafts).some(([id, draft]) => {
+      const orig = supportMessages.find((m) => m.id === id);
+      if (!orig) return false;
+      return (
+        (draft.status ?? orig.status) !== (orig.status || 'new') ||
+        String(draft.admin_note ?? orig.admin_note ?? '').trim() !==
+          String(orig.admin_note || '').trim()
+      );
+    });
+  }, [msgDrafts, supportMessages]);
+
+  const isNotifFormDirty = useMemo(
+    () => Boolean(notifTitle.trim() || notifMessage.trim()),
+    [notifTitle, notifMessage]
+  );
+
   const hasUnsavedChanges =
     brandFormDirty ||
     offerFormDirty ||
@@ -405,6 +495,8 @@ export default function Admin() {
     isUniFormDirty ||
     isNewAdminDirty ||
     isAdminPermsDirty ||
+    isMessagesDirty ||
+    isNotifFormDirty ||
     isStudentModalDirty;
 
   // Browser tab refresh / close guard when dirty
@@ -435,6 +527,9 @@ export default function Admin() {
     setNewAdminPass('');
     setNewAdminPerms(['stats', 'students']);
     setDraftAdminPerms({});
+    setMsgDrafts({});
+    setNotifTitle('');
+    setNotifMessage('');
     setSelectedStudent(null);
   }, []);
 
@@ -550,7 +645,7 @@ export default function Admin() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [pList, bList, oList, rList, uList, aList, cList] = await Promise.all([
+      const [pList, bList, oList, rList, uList, aList, cList, mList, nList] = await Promise.all([
         api.listProfiles ? api.listProfiles().catch(() => []) : Promise.resolve([]),
         api.listBrands ? api.listBrands(true).catch(() => []) : Promise.resolve([]),
         api.listAllOffers ? api.listAllOffers(true).catch(() => []) : Promise.resolve([]),
@@ -562,6 +657,12 @@ export default function Admin() {
         api.listCategories
           ? api.listCategories(true).catch(() => DEFAULT_CATEGORIES)
           : Promise.resolve(DEFAULT_CATEGORIES),
+        api.listSupportMessages
+          ? api.listSupportMessages().catch(() => [])
+          : Promise.resolve([]),
+        api.listBroadcastNotifications
+          ? api.listBroadcastNotifications().catch(() => [])
+          : Promise.resolve([]),
       ]);
       setProfiles(Array.isArray(pList) ? pList : []);
       setBrands(Array.isArray(bList) ? bList : []);
@@ -572,6 +673,8 @@ export default function Admin() {
       const cats = Array.isArray(cList) ? cList : DEFAULT_CATEGORIES || [];
       setCategories(cats);
       setSavedCategoriesSnapshot(cats.map((c) => c.id).join(','));
+      setSupportMessages(Array.isArray(mList) ? mList : []);
+      setBroadcastNotifications(Array.isArray(nList) ? nList : []);
     } finally {
       setLoading(false);
     }
@@ -580,6 +683,29 @@ export default function Admin() {
   useEffect(() => {
     if (session) loadAll();
   }, [session, loadAll]);
+
+  // Live updates for support messages and broadcast notifications
+  useEffect(() => {
+    if (!session) return undefined;
+    const refreshMsgsAndNotifs = async () => {
+      const [mList, nList] = await Promise.all([
+        api.listSupportMessages?.().catch(() => null),
+        api.listBroadcastNotifications?.().catch(() => null),
+      ]);
+      if (Array.isArray(mList)) setSupportMessages(mList);
+      if (Array.isArray(nList)) setBroadcastNotifications(nList);
+    };
+    window.addEventListener('imtiyo_messages_changed', refreshMsgsAndNotifs);
+    window.addEventListener('imtiyo_notifications_changed', refreshMsgsAndNotifs);
+    window.addEventListener('storage', refreshMsgsAndNotifs);
+    window.addEventListener('focus', refreshMsgsAndNotifs);
+    return () => {
+      window.removeEventListener('imtiyo_messages_changed', refreshMsgsAndNotifs);
+      window.removeEventListener('imtiyo_notifications_changed', refreshMsgsAndNotifs);
+      window.removeEventListener('storage', refreshMsgsAndNotifs);
+      window.removeEventListener('focus', refreshMsgsAndNotifs);
+    };
+  }, [session]);
 
   useEffect(() => {
     if (session && selectedBrandId && api.listOffers) {
@@ -995,6 +1121,123 @@ export default function Admin() {
 
   const verifiedCount = profiles.filter((p) => p.status === 'verified').length;
   const pendingCount = profiles.filter((p) => p.status === 'pending').length;
+  const unreadMessagesCount = supportMessages.filter((m) => (m.status || 'new') === 'new').length;
+
+  const setMsgDraftField = (msg, field, value) => {
+    setMsgDrafts((prev) => ({
+      ...prev,
+      [msg.id]: {
+        status: prev[msg.id]?.status ?? msg.status ?? 'new',
+        admin_note: prev[msg.id]?.admin_note ?? msg.admin_note ?? '',
+        [field]: value,
+      },
+    }));
+  };
+
+  const isMsgItemDirty = (msg) => {
+    const draft = msgDrafts[msg.id];
+    if (!draft) return false;
+    return (
+      (draft.status ?? msg.status) !== (msg.status || 'new') ||
+      String(draft.admin_note ?? msg.admin_note ?? '').trim() !==
+        String(msg.admin_note || '').trim()
+    );
+  };
+
+  const handleSaveMessage = async (msg) => {
+    if (!isMsgItemDirty(msg)) return;
+    const draft = msgDrafts[msg.id];
+    setSavingMsgId(msg.id);
+    try {
+      await api.updateSupportMessage(msg.id, {
+        status: draft.status,
+        admin_note: String(draft.admin_note || '').trim(),
+      });
+      const fresh = await api.listSupportMessages();
+      setSupportMessages(Array.isArray(fresh) ? fresh : []);
+      setMsgDrafts((prev) => {
+        const next = { ...prev };
+        delete next[msg.id];
+        return next;
+      });
+      toast({ title: 'Xabar holati saqlandi!' });
+    } catch {
+      toast({ title: 'Xabarni saqlashda xatolik', variant: 'destructive' });
+    } finally {
+      setSavingMsgId(null);
+    }
+  };
+
+  const handleDeleteMessage = async (id) => {
+    await api.deleteSupportMessage(id);
+    setSupportMessages((prev) => prev.filter((m) => m.id !== id));
+    setMsgDrafts((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    toast({ title: 'Xabar o‘chirildi' });
+  };
+
+  const handleSendBroadcastNotification = async (e) => {
+    e.preventDefault();
+    if (!notifTitle.trim() || !notifMessage.trim()) return;
+    setSendingNotif(true);
+    try {
+      await api.createBroadcastNotification({
+        title: notifTitle.trim(),
+        message: notifMessage.trim(),
+        audience: notifAudience,
+        tone: notifTone,
+      });
+      const fresh = await api.listBroadcastNotifications();
+      setBroadcastNotifications(Array.isArray(fresh) ? fresh : []);
+      setNotifTitle('');
+      setNotifMessage('');
+      toast({
+        title: 'Bildirishnoma yuborildi!',
+        description:
+          notifAudience === 'registered'
+            ? 'Login qilgan barcha foydalanuvchilarga yetkazildi.'
+            : notifAudience === 'guest'
+              ? 'Yangi foydalanuvchilar (mehmonlar) uchun faollashtirildi.'
+              : 'Barcha foydalanuvchilarga (login qilgan va yangi) yetkazildi.',
+      });
+    } catch {
+      toast({ title: 'Bildirishnoma yuborishda xatolik', variant: 'destructive' });
+    } finally {
+      setSendingNotif(false);
+    }
+  };
+
+  const handleDeleteBroadcastNotification = async (id) => {
+    await api.deleteBroadcastNotification(id);
+    setBroadcastNotifications((prev) => prev.filter((n) => n.id !== id));
+    toast({ title: 'Bildirishnoma o‘chirildi' });
+  };
+
+  const filteredSupportMessages = useMemo(() => {
+    const q = msgSearch.trim().toLowerCase();
+    return supportMessages.filter((m) => {
+      const st = m.status || 'new';
+      if (msgFilterStatus !== 'all' && st !== msgFilterStatus) return false;
+      const cat = m.category === 'question' ? 'help' : m.category || 'help';
+      if (msgFilterCategory !== 'all' && cat !== msgFilterCategory) return false;
+      if (!q) return true;
+      return (
+        String(m.full_name || '').toLowerCase().includes(q) ||
+        String(m.contact || '').toLowerCase().includes(q) ||
+        String(m.email || '').toLowerCase().includes(q) ||
+        String(m.student_id || '').toLowerCase().includes(q) ||
+        String(m.message || '').toLowerCase().includes(q)
+      );
+    });
+  }, [supportMessages, msgFilterStatus, msgFilterCategory, msgSearch]);
+
+  const filteredBroadcastNotifications = useMemo(() => {
+    if (notifFilterAudience === 'all') return broadcastNotifications;
+    return broadcastNotifications.filter((n) => (n.audience || 'all') === notifFilterAudience);
+  }, [broadcastNotifications, notifFilterAudience]);
 
   const selectedStudentDeals = selectedStudent
     ? allRedemptions.filter((r) => r.student_name === selectedStudent.name)
@@ -1080,6 +1323,18 @@ export default function Admin() {
                         {pendingCount}
                       </span>
                     )}
+                    {item.id === 'messages' && unreadMessagesCount > 0 && (
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-[10px] font-extrabold',
+                          active
+                            ? 'bg-white/25 text-white'
+                            : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'
+                        )}
+                      >
+                        {unreadMessagesCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1107,11 +1362,11 @@ export default function Admin() {
           {/* Sidebar top logo + collapse button */}
           <div
             className={cn(
-              'mb-5 flex items-center border-b border-slate-100 pb-3.5 dark:border-slate-800',
-              sidebarCollapsed ? 'justify-center' : 'justify-between px-1'
+              'mb-5 flex border-b border-slate-100 pb-3.5 dark:border-slate-800',
+              sidebarCollapsed ? 'flex-col items-center gap-2.5' : 'items-center justify-between px-1'
             )}
           >
-            {!sidebarCollapsed && <Logo size="sm" />}
+            {sidebarCollapsed ? <Logo size="sm" iconOnly /> : <Logo size="sm" />}
             <button
               type="button"
               onClick={toggleSidebarCollapsed}
@@ -1165,6 +1420,23 @@ export default function Admin() {
 
                   {item.id === 'students' && pendingCount > 0 && sidebarCollapsed && (
                     <span className="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-white dark:ring-[#0b1228]" />
+                  )}
+
+                  {item.id === 'messages' && unreadMessagesCount > 0 && !sidebarCollapsed && (
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-[10px] font-extrabold',
+                        active
+                          ? 'bg-white/25 text-white'
+                          : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'
+                      )}
+                    >
+                      {unreadMessagesCount}
+                    </span>
+                  )}
+
+                  {item.id === 'messages' && unreadMessagesCount > 0 && sidebarCollapsed && (
+                    <span className="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-[#0b1228]" />
                   )}
                 </button>
               );
@@ -1321,6 +1593,33 @@ export default function Admin() {
                   {universities.length}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => requestNavigation('/admin/xabarlar')}
+                className="rounded-[24px] border border-slate-200/80 bg-white/95 p-5 text-left shadow-sm backdrop-blur-xl transition-all hover:border-[#1D6FF2]/40 dark:border-slate-800 dark:bg-slate-900/90"
+              >
+                <p className="text-[11px] font-bold uppercase text-rose-500 dark:text-rose-400">
+                  Yangi xabarlar
+                </p>
+                <p className="mt-1.5 text-[28px] font-black text-rose-600 dark:text-rose-400">
+                  {unreadMessagesCount}
+                  <span className="ml-1.5 text-[12px] font-bold text-slate-400">
+                    / {supportMessages.length}
+                  </span>
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => requestNavigation('/admin/bildirishnomalar')}
+                className="rounded-[24px] border border-slate-200/80 bg-white/95 p-5 text-left shadow-sm backdrop-blur-xl transition-all hover:border-[#1D6FF2]/40 dark:border-slate-800 dark:bg-slate-900/90"
+              >
+                <p className="text-[11px] font-bold uppercase text-indigo-500 dark:text-indigo-400">
+                  Bildirishnomalar
+                </p>
+                <p className="mt-1.5 text-[28px] font-black text-indigo-600 dark:text-indigo-400">
+                  {broadcastNotifications.length}
+                </p>
+              </button>
             </div>
           )}
 
@@ -1365,18 +1664,15 @@ export default function Admin() {
                     />
                   </div>
 
-                  <select
+                  <RegionSelect
                     value={filterRegion}
-                    onChange={(e) => setFilterRegion(e.target.value)}
-                    className={cn(inputCls, 'h-9 w-full px-2.5 text-[12px]')}
-                  >
-                    <option value="">Barcha viloyatlar</option>
-                    {REGIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setFilterRegion}
+                    placeholder="Barcha viloyatlar"
+                    clearLabel="Barcha viloyatlar"
+                    allowClear
+                    compact
+                    showIcon={false}
+                  />
 
                   <UniversitySelect
                     universities={alphabetSortedUniversities}
@@ -2350,6 +2646,503 @@ export default function Admin() {
             </div>
           )}
 
+          {/* 5.5 XABARLAR (TALABALAR YORDAM VA SHIKOYATLARI) */}
+          {effectiveSection === 'messages' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200/80 bg-white/95 p-4 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { id: 'all', label: `Barchasi (${supportMessages.length})` },
+                    {
+                      id: 'new',
+                      label: `Yangi (${supportMessages.filter((m) => (m.status || 'new') === 'new').length})`,
+                    },
+                    {
+                      id: 'read',
+                      label: `O‘qilgan (${supportMessages.filter((m) => m.status === 'read').length})`,
+                    },
+                    {
+                      id: 'replied',
+                      label: `Javob berilgan (${supportMessages.filter((m) => m.status === 'replied').length})`,
+                    },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setMsgFilterStatus(tab.id)}
+                      className={cn(
+                        'rounded-xl px-3 py-1.5 text-[12px] font-bold transition-all',
+                        msgFilterStatus === tab.id
+                          ? 'bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:text-[#002D96] dark:bg-slate-800 dark:text-slate-300 dark:hover:text-sky-300'
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { id: 'all', label: 'Barcha turlar' },
+                    { id: 'complaint', label: 'Shikoyat' },
+                    { id: 'help', label: 'Yordam / Savol' },
+                    { id: 'suggestion', label: 'Taklif' },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setMsgFilterCategory(cat.id)}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-[11px] font-bold transition-colors',
+                        msgFilterCategory === cat.id
+                          ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 text-[#002D96] dark:border-sky-400 dark:bg-sky-500/15 dark:text-sky-300'
+                          : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      )}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={msgSearch}
+                  onChange={(e) => setMsgSearch(e.target.value)}
+                  placeholder="Talaba ismi, aloqa raqami, ID yoki xabar matni bo‘yicha qidiring..."
+                  className={cn(inputCls, 'h-10 w-full rounded-2xl pl-10 pr-4')}
+                />
+              </div>
+
+              {filteredSupportMessages.length === 0 ? (
+                <div className="rounded-[26px] border border-dashed border-slate-200 bg-white/80 py-14 text-center dark:border-slate-800 dark:bg-slate-900/70">
+                  <MessageSquare className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
+                  <p className="mt-2.5 text-[14px] font-extrabold text-[#08123A] dark:text-white">
+                    Hozircha murojaatlar yo‘q
+                  </p>
+                  <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
+                    Talabalar «Yordam» yoki «Bog‘lanish» bo‘limidan yozgan barcha shikoyat va savollar shu yerda ko‘rinadi.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredSupportMessages.map((msg) => {
+                    const draft = msgDrafts[msg.id];
+                    const curStatus = draft?.status ?? msg.status ?? 'new';
+                    const curNote = draft?.admin_note ?? msg.admin_note ?? '';
+                    const dirty = isMsgItemDirty(msg);
+                    const cat = msg.category === 'question' ? 'help' : msg.category || 'help';
+                    const catMeta =
+                      cat === 'complaint'
+                        ? {
+                            label: 'Shikoyat',
+                            cls: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-500/30',
+                          }
+                        : cat === 'suggestion'
+                          ? {
+                              label: 'Taklif',
+                              cls: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-500/30',
+                            }
+                          : {
+                              label: 'Yordam / Savol',
+                              cls: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-500/30',
+                            };
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className={cn(
+                          'rounded-[24px] border bg-white/95 p-5 shadow-sm backdrop-blur-xl transition-all dark:bg-slate-900/90',
+                          (msg.status || 'new') === 'new'
+                            ? 'border-[#1D6FF2]/45 ring-1 ring-[#1D6FF2]/15 dark:border-sky-500/40'
+                            : 'border-slate-200/80 dark:border-slate-800'
+                        )}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-[14.5px] font-extrabold text-[#08123A] dark:text-white">
+                                {msg.full_name || 'Foydalanuvchi'}
+                              </h4>
+                              {msg.student_id && (
+                                <span className="rounded-full bg-[#002D96]/10 px-2.5 py-0.5 font-mono text-[10.5px] font-bold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
+                                  #{msg.student_id}
+                                </span>
+                              )}
+                              <span
+                                className={cn(
+                                  'rounded-full border px-2.5 py-0.5 text-[10.5px] font-extrabold',
+                                  catMeta.cls
+                                )}
+                              >
+                                {catMeta.label}
+                              </span>
+                              {(msg.status || 'new') === 'new' && (
+                                <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                                  Yangi
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-[12px] font-semibold text-slate-500 dark:text-slate-400">
+                              Aloqa:{' '}
+                              <span className="text-[#08123A] dark:text-slate-200">
+                                {msg.contact || msg.email || '—'}
+                              </span>
+                              {msg.email && msg.contact && msg.email !== msg.contact
+                                ? ` · ${msg.email}`
+                                : ''}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold text-slate-400">
+                              {msg.created_at
+                                ? new Date(msg.created_at).toLocaleString('uz-UZ')
+                                : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMessage(msg.id)}
+                              title="O‘chirish"
+                              className="grid h-8 w-8 place-items-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 dark:bg-rose-950/50 dark:text-rose-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 text-[13px] leading-relaxed text-[#08123A] dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-100">
+                          {msg.message}
+                        </div>
+
+                        <div className="mt-3.5 flex flex-col gap-2.5 border-t border-slate-100 pt-3.5 dark:border-slate-800 lg:flex-row lg:items-center">
+                          <div className="flex shrink-0 flex-wrap gap-1.5">
+                            {[
+                              { id: 'new', label: 'Yangi' },
+                              { id: 'read', label: 'O‘qilgan' },
+                              { id: 'replied', label: 'Javob berilgan' },
+                            ].map((st) => (
+                              <button
+                                key={st.id}
+                                type="button"
+                                onClick={() => setMsgDraftField(msg, 'status', st.id)}
+                                className={cn(
+                                  'rounded-xl border px-3 py-1.5 text-[11.5px] font-bold transition-colors',
+                                  curStatus === st.id
+                                    ? st.id === 'replied'
+                                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                                      : 'border-[#1D6FF2] bg-[#002D96] text-white'
+                                    : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                )}
+                              >
+                                {st.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={curNote}
+                            onChange={(e) => setMsgDraftField(msg, 'admin_note', e.target.value)}
+                            placeholder="Admin izohi (masalan: Telegram orqali javob berildi)..."
+                            className={cn(inputCls, 'h-9 flex-1 text-[12px]')}
+                          />
+
+                          <Button
+                            type="button"
+                            onClick={() => handleSaveMessage(msg)}
+                            disabled={!dirty || savingMsgId === msg.id}
+                            className="h-9 shrink-0 rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] px-4 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {savingMsgId === msg.id ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Save className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Saqlash
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 5.6 BILDIRISHNOMALAR (LOGIN QILGANLAR / YANGI FOYDALANUVCHILAR / IKKALASIGA HAM) */}
+          {effectiveSection === 'notifications' && (
+            <div className="grid gap-5 lg:grid-cols-12">
+              <form
+                onSubmit={handleSendBroadcastNotification}
+                className="space-y-4 rounded-[26px] border border-slate-200/80 bg-white/95 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 lg:col-span-5"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#1D6FF2]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
+                    <Megaphone className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-[15.5px] font-extrabold text-[#08123A] dark:text-white">
+                      Yangi bildirishnoma yuborish
+                    </h3>
+                    <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
+                      Ilovadagi qo‘ng‘iroqcha (bildirishnoma) oynasida darhol ko‘rinadi
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Kimga yuborilsin?
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      {
+                        id: 'registered',
+                        title: 'Login qilgan foydalanuvchilar',
+                        desc: 'Faqat tizimga kirgan talabalarga ko‘rinadi',
+                      },
+                      {
+                        id: 'guest',
+                        title: 'Yangi foydalanuvchilar (Mehmonlar)',
+                        desc: 'Faqat hali login qilmagan foydalanuvchilarga ko‘rinadi',
+                      },
+                      {
+                        id: 'all',
+                        title: 'Ikkalasiga ham (Barcha foydalanuvchilar)',
+                        desc: 'Ham login qilganlarga, ham yangi foydalanuvchilarga ko‘rinadi',
+                      },
+                    ].map((aud) => (
+                      <button
+                        key={aud.id}
+                        type="button"
+                        onClick={() => setNotifAudience(aud.id)}
+                        className={cn(
+                          'flex items-start gap-2.5 rounded-2xl border p-3 text-left transition-all',
+                          notifAudience === aud.id
+                            ? 'border-[#1D6FF2] bg-[#1D6FF2]/10 ring-1 ring-[#1D6FF2]/25 dark:border-sky-400 dark:bg-sky-500/15'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/70'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border',
+                            notifAudience === aud.id
+                              ? 'border-[#1D6FF2] bg-[#1D6FF2] text-white'
+                              : 'border-slate-300 dark:border-slate-600'
+                          )}
+                        >
+                          {notifAudience === aud.id && <Check className="h-2.5 w-2.5" />}
+                        </span>
+                        <div>
+                          <p className="text-[12.5px] font-extrabold text-[#08123A] dark:text-white">
+                            {aud.title}
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {aud.desc}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Xabar turi
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: 'info', label: 'Yangilik' },
+                      { id: 'promo', label: 'Aksiya' },
+                      { id: 'alert', label: 'Muhim' },
+                    ].map((tone) => (
+                      <button
+                        key={tone.id}
+                        type="button"
+                        onClick={() => setNotifTone(tone.id)}
+                        className={cn(
+                          'rounded-xl border py-2 text-[12px] font-bold transition-colors',
+                          notifTone === tone.id
+                            ? tone.id === 'alert'
+                              ? 'border-amber-500 bg-amber-500 text-white'
+                              : tone.id === 'promo'
+                                ? 'border-emerald-500 bg-emerald-500 text-white'
+                                : 'border-[#1D6FF2] bg-[#002D96] text-white'
+                            : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        )}
+                      >
+                        {tone.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    Sarlavha *
+                  </label>
+                  <input
+                    required
+                    value={notifTitle}
+                    onChange={(e) => setNotifTitle(e.target.value)}
+                    placeholder="Masalan: Yangi 30% talaba chegirmasi qo‘shildi!"
+                    className={cn(inputCls, 'w-full py-2.5')}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    Xabar matni *
+                  </label>
+                  <textarea
+                    required
+                    rows={4}
+                    value={notifMessage}
+                    onChange={(e) => setNotifMessage(e.target.value)}
+                    placeholder="Foydalanuvchilar ko‘radigan batafsil xabar matnini yozing..."
+                    className={cn(inputCls, 'w-full resize-none py-2.5')}
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={sendingNotif || !notifTitle.trim() || !notifMessage.trim()}
+                  className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {sendingNotif ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Yuborilmoqda...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Bildirishnomani yuborish
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <div className="space-y-3.5 rounded-[26px] border border-slate-200/80 bg-white/95 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 lg:col-span-7">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-[15px] font-extrabold text-[#08123A] dark:text-white">
+                    <Bell className="h-4 w-4 text-[#1D6FF2] dark:text-sky-400" />
+                    Yuborilgan bildirishnomalar ({broadcastNotifications.length})
+                  </h3>
+
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { id: 'all', label: 'Barchasi' },
+                      { id: 'registered', label: 'Login qilganlar' },
+                      { id: 'guest', label: 'Yangi userlar' },
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setNotifFilterAudience(f.id)}
+                        className={cn(
+                          'rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors',
+                          notifFilterAudience === f.id
+                            ? 'bg-[#002D96] text-white'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                        )}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredBroadcastNotifications.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 py-14 text-center dark:border-slate-700">
+                    <Bell className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" />
+                    <p className="mt-2 text-[13px] font-bold text-slate-500 dark:text-slate-400">
+                      Hozircha yuborilgan bildirishnoma yo‘q
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2.5">
+                    {filteredBroadcastNotifications.map((n) => {
+                      const audBadge =
+                        n.audience === 'registered'
+                          ? {
+                              label: 'Login qilganlar',
+                              cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+                            }
+                          : n.audience === 'guest'
+                            ? {
+                                label: 'Yangi foydalanuvchilar',
+                                cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                              }
+                            : {
+                                label: 'Ikkalasiga ham (Barchaga)',
+                                cls: 'bg-[#1D6FF2]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300',
+                              };
+
+                      return (
+                        <li
+                          key={n.id}
+                          className="rounded-2xl border border-slate-100 bg-slate-50/75 p-4 dark:border-slate-800 dark:bg-slate-800/60"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={cn(
+                                    'h-2.5 w-2.5 shrink-0 rounded-full',
+                                    n.tone === 'alert'
+                                      ? 'bg-amber-500'
+                                      : n.tone === 'promo'
+                                        ? 'bg-emerald-500'
+                                        : 'bg-[#1D6FF2]'
+                                  )}
+                                />
+                                <p className="text-[13.5px] font-extrabold text-[#08123A] dark:text-white">
+                                  {n.title}
+                                </p>
+                              </div>
+                              <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-300">
+                                {n.message}
+                              </p>
+                              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                                <span
+                                  className={cn(
+                                    'rounded-full px-2.5 py-0.5 text-[10.5px] font-extrabold',
+                                    audBadge.cls
+                                  )}
+                                >
+                                  {audBadge.label}
+                                </span>
+                                <span className="text-[10.5px] font-semibold text-slate-400">
+                                  {n.created_at
+                                    ? new Date(n.created_at).toLocaleString('uz-UZ')
+                                    : ''}
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBroadcastNotification(n.id)}
+                              title="O‘chirish"
+                              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 6. ADMINLAR VA HUQUQLAR (DIRTY-STATE SAQLASH TUGMASI) */}
           {effectiveSection === 'admins' && session.isSuper && (
             <div className="grid gap-4 lg:grid-cols-2">
@@ -2560,17 +3353,12 @@ export default function Admin() {
                 placeholder="Qisqa nomi"
                 className={cn(inputCls, 'w-full')}
               />
-              <select
+              <RegionSelect
                 value={customApproveRegion}
-                onChange={(e) => setCustomApproveRegion(e.target.value)}
-                className={cn(inputCls, 'w-full')}
-              >
-                {REGIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
+                onChange={setCustomApproveRegion}
+                compact
+                showIcon={false}
+              />
             </div>
             <div className="flex gap-2">
               <Button
@@ -2605,7 +3393,7 @@ export default function Admin() {
           onClick={closeStudentModal}
         >
           <div
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[28px] border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[28px] border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">

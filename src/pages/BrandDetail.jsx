@@ -17,8 +17,10 @@ import {
 import AppShell, { openAuthPromptModal } from '@/components/AppShell';
 import CardImageBlur from '@/components/CardImageBlur';
 import { Button } from '@/components/ui/button';
+import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { useToast } from '@/components/ui/use-toast';
+import { useScrollLock } from '@/lib/useScrollLock';
 import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { copyText } from '@/lib/deal';
 import { cn } from '@/lib/utils';
@@ -26,6 +28,7 @@ import { cn } from '@/lib/utils';
 export default function BrandDetail() {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
+  const { t, lang } = useLang();
   const { profile } = useStudent();
   const { toast } = useToast();
 
@@ -40,6 +43,8 @@ export default function BrandDetail() {
   const [mapModalOpen, setMapModalOpen] = useState(false);
   const [activeBranch, setActiveBranch] = useState(null);
   const [activatedCode, setActivatedCode] = useState(null);
+
+  useScrollLock(mapModalOpen);
 
   const requestedOfferId = searchParams.get('offer') || '';
 
@@ -71,13 +76,16 @@ export default function BrandDetail() {
         } else if (cleanReq === `default-${bData.id}` && validOffers.length === 0) {
           setSelectedOffer({
             id: `default-${bData.id}`,
+            title: bData.tagline,
             title_uz: bData.tagline?.uz || `${bData.name} talaba chegirmasi`,
-            description_uz:
-              bData.description?.uz ||
-              `${bData.name} barcha filiallari va xizmatlarida tasdiqlangan talabalar uchun maxsus chegirma.`,
-            terms_uz:
-              '1. Chegirma faqat tasdiqlangan IMTIYO talabalari uchun amal qiladi.\n2. Kod faollashtirilgandan so‘ng 15 daqiqa davomida kassada ko‘rsatilishi lozim.',
-            discount: bData.discount || 'Maxsus taklif',
+            title_ru: bData.tagline?.ru || '',
+            title_en: bData.tagline?.en || '',
+            description: bData.description,
+            description_uz: bData.description?.uz || '',
+            description_ru: bData.description?.ru || '',
+            description_en: bData.description?.en || '',
+            terms_uz: '',
+            discount: bData.discount || '',
             redemption: bData.redemption || 'qr',
             valid_until: bData.valid_until || '31/12/2026',
             image_url: bData.cover_url,
@@ -103,13 +111,23 @@ export default function BrandDetail() {
       categories.find((c) => c.id === catId) || {
         id: catId,
         label_uz: 'Taomlar va ichimliklar',
+        label_ru: 'Еда и напитки',
+        label_en: 'Food & Drinks',
       }
     );
   }, [categories, brand, searchParams]);
 
+  const categoryLabel =
+    (lang === 'ru' && categoryObj.label_ru) ||
+    (lang === 'en' && categoryObj.label_en) ||
+    categoryObj.label_uz;
+
+  const getOfferTitle = (o) =>
+    o?.title?.[lang] || o?.[`title_${lang}`] || o?.title_uz || o?.title?.uz || brand?.name || '';
+
   const breadcrumbs = useMemo(() => {
-    if (!brand) return [{ label: 'Yuklanmoqda...' }];
-    const base = [{ label: categoryObj.label_uz, to: `/?cat=${categoryObj.id}` }];
+    if (!brand) return [{ label: t('common.loading') }];
+    const base = [{ label: categoryLabel, to: `/?cat=${categoryObj.id}` }];
     if (selectedOffer) {
       return [
         ...base,
@@ -120,11 +138,11 @@ export default function BrandDetail() {
             setActivatedCode(null);
           },
         },
-        { label: selectedOffer.title_uz || selectedOffer.title?.uz || 'Chegirma' },
+        { label: getOfferTitle(selectedOffer) || t('nav.deals') },
       ];
     }
     return [...base, { label: brand.name }];
-  }, [brand, categoryObj, selectedOffer]);
+  }, [brand, categoryObj.id, categoryLabel, selectedOffer, lang, t]);
 
   if (!brand) {
     return (
@@ -198,13 +216,21 @@ export default function BrandDetail() {
       : [
           {
             id: `default-${brand.id}`,
-            title_uz: brand.tagline?.uz || `${brand.name} talaba chegirmasi`,
+            title: brand.tagline,
+            title_uz: brand.tagline?.uz || t('brand.defaultOfferTitle', { name: brand.name }),
+            title_ru: brand.tagline?.ru || t('brand.defaultOfferTitle', { name: brand.name }),
+            title_en: brand.tagline?.en || t('brand.defaultOfferTitle', { name: brand.name }),
+            description: brand.description,
             description_uz:
-              brand.description?.uz ||
-              `${brand.name} barcha filiallari va xizmatlarida tasdiqlangan talabalar uchun maxsus chegirma.`,
-            terms_uz:
-              '1. Chegirma faqat tasdiqlangan IMTIYO talabalari uchun amal qiladi.\n2. Kod faollashtirilgandan so‘ng 15 daqiqa davomida kassada ko‘rsatilishi lozim.',
-            discount: brand.discount || 'Maxsus taklif',
+              brand.description?.uz || t('brand.defaultOfferDesc', { name: brand.name }),
+            description_ru:
+              brand.description?.ru || t('brand.defaultOfferDesc', { name: brand.name }),
+            description_en:
+              brand.description?.en || t('brand.defaultOfferDesc', { name: brand.name }),
+            terms_uz: t('brand.defaultTerms'),
+            terms_ru: t('brand.defaultTerms'),
+            terms_en: t('brand.defaultTerms'),
+            discount: brand.discount || t('brand.specialOffer'),
             redemption: brand.redemption || 'qr',
             valid_until: brand.valid_until || '31/12/2026',
             image_url: brand.cover_url,
@@ -245,7 +271,7 @@ export default function BrandDetail() {
                   <button
                     type="button"
                     onClick={(e) => handleOfferLikeClick(e, selectedOffer.id)}
-                    aria-label="Chegirmani saqlash"
+                    aria-label={t('brand.saveOffer')}
                     className="inline-flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 text-[12px] font-bold text-[#08123A] shadow-sm transition-transform hover:scale-105 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     <Heart
@@ -257,24 +283,30 @@ export default function BrandDetail() {
                       )}
                     />
                     <span>
-                      {api.isOfferLiked(selectedOffer.id, likedIds) ? 'Saqlangan' : 'Saqlash'}
+                      {api.isOfferLiked(selectedOffer.id, likedIds)
+                        ? t('common.saved')
+                        : t('common.save')}
                     </span>
                   </button>
                 </div>
 
                 <h1 className="mt-2 text-[26px] font-black leading-tight text-[#08123A] dark:text-white md:text-[32px]">
-                  {selectedOffer.title_uz || selectedOffer.title?.uz}
+                  {getOfferTitle(selectedOffer)}
                 </h1>
 
                 <p className="mt-2 text-[13px] font-semibold text-slate-500 dark:text-slate-400">
-                  Amal qiladi: {selectedOffer.valid_until || '31/12/2026'} gacha •{' '}
-                  {selectedOffer.redemption === 'app' ? 'Online' : 'Filialda (On-site)'}
+                  {t('common.validUntil')}: {selectedOffer.valid_until || '31/12/2026'}
+                  {t('common.until') ? ` ${t('common.until')}` : ''} •{' '}
+                  {selectedOffer.redemption === 'app'
+                    ? t('common.online')
+                    : t('common.onsiteBranch')}
                 </p>
 
                 <p className="mt-4 text-[14.5px] leading-relaxed font-medium text-slate-700 dark:text-slate-300">
                   {selectedOffer.description_uz ||
+                    brand.description?.[lang] ||
                     brand.description?.uz ||
-                    `${selectedOffer.title_uz} — faqat tasdiqlangan talabalar uchun amal qiladi.`}
+                    getOfferTitle(selectedOffer)}
                 </p>
               </div>
 
@@ -285,21 +317,21 @@ export default function BrandDetail() {
                     onClick={() => handleActivateOffer(selectedOffer)}
                     className="flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-[#002D96] via-[#1D6FF2] to-[#00A9FF] px-8 text-[14.5px] font-extrabold text-white shadow-[0_14px_30px_-10px_rgba(0,45,150,0.75)] transition-transform hover:scale-[1.01]"
                   >
-                    Chegirmani faollashtirish (Activate offer)
+                    {t('brand.activateOffer')}
                   </button>
                   <p className="text-center text-[12px] font-medium text-slate-500 dark:text-slate-400">
-                    Faollashtirilgandan so‘ng{' '}
+                    {t('brand.activateHintBefore')}{' '}
                     <strong className="font-extrabold text-[#1D6FF2] dark:text-sky-400">
-                      15 daqiqa ichida
+                      {t('brand.activateHintBold')}
                     </strong>{' '}
-                    chegirmadan foydalaning.
+                    {t('brand.activateHintAfter')}
                   </p>
                 </div>
               ) : (
                 <div className="rounded-[24px] border-2 border-[#1D6FF2]/30 bg-[#1D6FF2]/[0.06] p-5 text-center dark:border-sky-500/30 dark:bg-sky-500/10">
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-3 py-1 text-[11.5px] font-extrabold text-emerald-700 dark:text-emerald-300">
                     <ShieldCheck className="h-4 w-4" />
-                    Chegirma faollashtirildi (15 daqiqa faol)
+                    {t('brand.activatedBadge')}
                   </span>
                   <p className="mt-3 font-mono text-[26px] font-black tracking-widest text-[#08123A] dark:text-white">
                     {activatedCode.code}
@@ -309,12 +341,12 @@ export default function BrandDetail() {
                       type="button"
                       onClick={async () => {
                         await copyText(activatedCode.code);
-                        toast({ title: 'Kod nusxalandi!', description: activatedCode.code });
+                        toast({ title: t('toast.copied'), description: activatedCode.code });
                       }}
                       className="h-10 rounded-full bg-[#002D96] px-6 text-[12.5px] font-extrabold text-white hover:bg-[#1D6FF2]"
                     >
                       <Copy className="mr-2 h-3.5 w-3.5" />
-                      Kodni nusxalash
+                      {t('common.copy')}
                     </Button>
                   </div>
                 </div>
@@ -327,7 +359,7 @@ export default function BrandDetail() {
                   onClick={() => setTermsOpen((v) => !v)}
                   className="flex w-full items-center justify-between px-5 py-4 text-left text-[14.5px] font-extrabold text-[#08123A] hover:bg-slate-50/70 dark:text-white dark:hover:bg-slate-800/70"
                 >
-                  <span>Shartlar (Terms)</span>
+                  <span>{t('brand.terms')}</span>
                   <ChevronDown
                     className={cn(
                       'h-4 w-4 text-slate-500 transition-transform duration-200 dark:text-slate-400',
@@ -337,7 +369,9 @@ export default function BrandDetail() {
                 </button>
                 {termsOpen && (
                   <div className="border-t border-slate-100 px-5 pb-4 pt-3 text-[13px] whitespace-pre-line leading-relaxed text-slate-600 dark:border-slate-800 dark:text-slate-300">
-                    {selectedOffer.terms_uz}
+                    {selectedOffer[`terms_${lang}`] ||
+                      selectedOffer.terms_uz ||
+                      t('brand.defaultTerms')}
                   </div>
                 )}
               </div>
@@ -361,7 +395,7 @@ export default function BrandDetail() {
                       }}
                       className="rounded-full border border-slate-200 bg-white px-6 py-2.5 text-[13px] font-extrabold text-[#08123A] shadow-lg transition-transform hover:scale-105 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                     >
-                      Xaritada ko‘rish (View on map)
+                      {t('brand.viewOnMap')}
                     </button>
                   </div>
                 </div>
@@ -431,7 +465,7 @@ export default function BrandDetail() {
                 </div>
 
                 <p className="text-[14px] leading-relaxed font-medium text-slate-600 dark:text-slate-300">
-                  {brand.description?.uz}
+                  {brand.description?.[lang] || brand.description?.uz}
                 </p>
 
                 {(brand.facebook ||
@@ -491,7 +525,7 @@ export default function BrandDetail() {
                         rel="noopener noreferrer"
                         className="inline-flex h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 text-[12.5px] font-bold text-[#08123A] transition-colors hover:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       >
-                        <span>Veb-saytga o‘tish</span>
+                        <span>{t('brand.visitWebsite')}</span>
                         <ExternalLink className="h-3.5 w-3.5" />
                       </a>
                     )}
@@ -504,7 +538,7 @@ export default function BrandDetail() {
             <section className="space-y-4">
               <div className="flex items-center gap-2.5">
                 <h2 className="text-[20px] font-extrabold text-[#08123A] dark:text-white">
-                  {brand.name}: Joriy talaba chegirmalari
+                  {t('brand.currentDeals', { name: brand.name })}
                 </h2>
                 <span className="rounded-full bg-[#1D6FF2]/10 px-3 py-0.5 text-[12px] font-extrabold text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
                   {displayOffers.length}
@@ -536,7 +570,7 @@ export default function BrandDetail() {
                         {offerImg && (
                           <img
                             src={offerImg}
-                            alt={offer.title_uz || brand.name}
+                            alt={getOfferTitle(offer) || brand.name}
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         )}
@@ -545,7 +579,7 @@ export default function BrandDetail() {
 
                         <span className="absolute bottom-3 left-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-[#002D96] shadow-sm">
                           <Sparkles className="h-3 w-3 text-[#1D6FF2]" />
-                          {offer.discount || 'Yangi'}
+                          {offer.discount || t('common.new')}
                         </span>
                       </div>
 
@@ -553,19 +587,22 @@ export default function BrandDetail() {
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="min-w-0 flex-1">
                             <h3 className="text-[17px] font-extrabold text-[#08123A] group-hover:text-[#1D6FF2] dark:text-white dark:group-hover:text-sky-400">
-                              {offer.title_uz || offer.title?.uz || `${brand.name} talaba chegirmasi`}
+                              {getOfferTitle(offer) || `${brand.name} · ${t('app.tagline')}`}
                             </h3>
                             <p className="mt-1.5 text-[12.5px] font-medium text-slate-500 dark:text-slate-400">
-                              Amal qiladi: {offer.valid_until || '31/12/2026'} gacha •{' '}
-                              {offer.redemption === 'app' ? 'Online' : 'Filialda (On-site)'}
+                              {t('common.validUntil')}: {offer.valid_until || '31/12/2026'}
+                              {t('common.until') ? ` ${t('common.until')}` : ''} •{' '}
+                              {offer.redemption === 'app'
+                                ? t('common.online')
+                                : t('common.onsiteBranch')}
                             </p>
                           </div>
 
                           <button
                             type="button"
                             onClick={(e) => handleOfferLikeClick(e, offer.id)}
-                            aria-label="Chegirmani saqlash"
-                            title="Chegirmani saqlash"
+                            aria-label={t('brand.saveOffer')}
+                            title={t('brand.saveOffer')}
                             className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200/90 bg-white text-[#08123A] shadow-sm transition-transform hover:scale-110 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                           >
                             <Heart
@@ -589,7 +626,7 @@ export default function BrandDetail() {
                           }}
                           className="mt-5 flex h-11 w-full items-center justify-center rounded-full bg-[#1D6FF2]/12 px-6 text-[13px] font-extrabold text-[#002D96] transition-colors hover:bg-[#1D6FF2]/20 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25"
                         >
-                          Chegirmani olish (Claim discount)
+                          {t('brand.claimDiscount')}
                         </button>
                       </div>
                     </div>
@@ -604,20 +641,20 @@ export default function BrandDetail() {
       {/* XARITADA KO'RISH MODALI */}
       {mapModalOpen && showBrandMap && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#08123A]/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#08123A]/60 p-4 backdrop-blur-sm"
           onClick={() => setMapModalOpen(false)}
         >
           <div
-            className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
               <div>
                 <h3 className="text-[16px] font-extrabold text-[#08123A] dark:text-white">
-                  {brand.name} — Xaritadagi filiallar ({locations.length})
+                  {t('brand.mapBranches', { name: brand.name, count: locations.length })}
                 </h3>
                 <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                  {activeBranch?.address || 'Toshkent shahri'}
+                  {activeBranch?.address || t('footer.city')}
                 </p>
               </div>
               <button
@@ -641,7 +678,7 @@ export default function BrandDetail() {
               />
             </div>
 
-            <div className="max-h-52 space-y-2 overflow-y-auto p-4">
+            <div className="max-h-52 space-y-2 overflow-y-auto overscroll-contain p-4">
               {locations.map((loc) => (
                 <div
                   key={loc.id}
@@ -669,7 +706,7 @@ export default function BrandDetail() {
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#002D96] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:bg-[#1D6FF2]"
                   >
                     <Navigation className="h-3 w-3" />
-                    Google Maps’da borish
+                    {t('brand.goGoogleMaps')}
                   </a>
                 </div>
               ))}
