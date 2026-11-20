@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Calendar,
   CheckCircle2,
@@ -276,17 +277,18 @@ export default function VerifyModal({ open, onOpenChange }) {
     }
   };
 
-  return (
+  const modalNode = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#08123A]/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[9000] flex items-center justify-center overflow-hidden bg-[#08123A]/65 p-3 sm:p-4 backdrop-blur-sm"
       onClick={() => !uploading && onOpenChange(false)}
     >
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-md space-y-3.5 overflow-y-auto overscroll-contain rounded-[28px] border border-slate-200/90 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+        className="flex max-h-[min(90dvh,740px)] w-full max-w-md flex-col overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
       >
-        <div className="flex items-start justify-between gap-3">
+        {/* QOTIRILGAN SARLAVHA (DOIM KO'RINIB TURADI) */}
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div>
             <h3 className="text-[18px] font-extrabold text-[#08123A] dark:text-white">
               {t('verify.title')}
@@ -305,7 +307,8 @@ export default function VerifyModal({ open, onOpenChange }) {
           </button>
         </div>
 
-        <div className="space-y-3">
+        {/* ICHKI SCROLL QILINADIGAN MAYDONLAR */}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4">
           {/* 1. F.I.O */}
           <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 focus-within:border-[#1D6FF2] dark:border-slate-700 dark:bg-slate-800">
             <User className="h-4 w-4 shrink-0 text-[#1D6FF2] dark:text-sky-400" />
@@ -486,24 +489,29 @@ export default function VerifyModal({ open, onOpenChange }) {
           </label>
         </div>
 
-        <Button
-          type="submit"
-          disabled={uploading || !isFormReady || !file}
-          className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white shadow-md disabled:opacity-45"
-        >
-          {uploading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t('verify.submitting')}
-            </>
-          ) : (
-            <>
-              <Upload className="mr-2 h-4 w-4" />
-              {t('verify.submit')}
-            </>
-          )}
-        </Button>
+        {/* DOIM PASTDA QOTIRILGAN YUBORISH TUGMASI (100% ZOOMDA HAM KESILMAYDI) */}
+        <div className="shrink-0 border-t border-slate-100 bg-white/95 px-5 py-3.5 dark:border-slate-800 dark:bg-slate-900/95">
+          <Button
+            type="submit"
+            disabled={uploading || !isFormReady || !file}
+            className="h-11 w-full rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] text-[13px] font-bold text-white shadow-md disabled:opacity-45"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('verify.submitting')}
+              </>
+            ) : (
+              <>
+                <Upload className="mr-2 h-4 w-4" />
+                {t('verify.submit')}
+              </>
+            )}
+          </Button>
+        </div>
       </form>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
 }

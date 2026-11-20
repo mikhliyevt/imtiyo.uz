@@ -7,6 +7,7 @@ import CardImageBlur from '@/components/CardImageBlur';
 import { HomeGridSkeleton } from '@/components/PageSkeleton';
 import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
+import { useSiteSettings } from '@/lib/useSiteSettings';
 import { api, DEFAULT_CATEGORIES } from '@/services/api';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +24,7 @@ function getViewportMode() {
 export default function Home() {
   const { t, lang } = useLang();
   const { profile } = useStudent();
+  const siteSettings = useSiteSettings();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [brands, setBrands] = useState([]);
@@ -392,10 +394,14 @@ export default function Home() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-[26px] font-black tracking-tight text-[#08123A] dark:text-white md:text-[32px]">
-                {activeCategoryLabel}
+                {category === 'all' && siteSettings.hero_title?.trim()
+                  ? siteSettings.hero_title.trim()
+                  : activeCategoryLabel}
               </h1>
               <p className="mt-0.5 text-[13.5px] font-medium text-slate-500 dark:text-slate-400">
-                {t('home.subtitle')}
+                {category === 'all' && siteSettings.hero_subtitle?.trim()
+                  ? siteSettings.hero_subtitle.trim()
+                  : t('home.subtitle')}
               </p>
             </div>
 

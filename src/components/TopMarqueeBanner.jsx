@@ -1,10 +1,16 @@
 import { AlertTriangle } from 'lucide-react';
 import { useLang } from '@/lib/LanguageContext';
+import { useSiteSettings } from '@/lib/useSiteSettings';
 
 export default function TopMarqueeBanner() {
   const { t } = useLang();
+  const siteSettings = useSiteSettings();
+
+  if (!siteSettings.show_test_banner) return null;
+
   const items = Array.from({ length: 6 }, (_, i) => i);
-  const text = `⚠️ ${t('marquee.testMode')}`;
+  const bannerBody = String(siteSettings.test_banner_text || '').trim() || t('marquee.testMode');
+  const text = `⚠️ ${bannerBody}`;
 
   return (
     <div className="relative z-40 w-full overflow-hidden border-b border-amber-300/60 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white shadow-sm dark:border-amber-500/30 dark:from-amber-600 dark:via-orange-600 dark:to-amber-600">

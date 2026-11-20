@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   ADMIN_PERMISSIONS: 'imtiyo_admin_permissions_v1',
   SUPPORT_MESSAGES: 'imtiyo_support_messages_v1',
   BROADCAST_NOTIFICATIONS: 'imtiyo_broadcast_notifications_v1',
+  SITE_SETTINGS: 'imtiyo_site_settings_v1',
 };
 
 export const COURSE_OPTIONS = ['1', '2', '3', '4', '5', '6'];
@@ -105,7 +106,56 @@ export const ADMIN_PERMISSION_LIST = [
   { id: 'universities', label: 'Universitetlar' },
   { id: 'messages', label: 'Xabarlar (Yordam / Shikoyatlar)' },
   { id: 'notifications', label: 'Bildirishnomalar yuborish' },
+  { id: 'settings', label: 'Sozlamalar' },
 ];
+
+export const DEFAULT_SITE_SETTINGS = {
+  id: 'default',
+  show_test_banner: true,
+  test_banner_text: '',
+  telegram_url: 'https://t.me/imtiyosupport_bot',
+  instagram_url: 'https://instagram.com/imtiyo.uz',
+  youtube_url: '',
+  contact_phone: '+998 (71) 200-00-00',
+  contact_email: 'info@imtiyo.uz',
+  hero_title: '',
+  hero_subtitle: '',
+};
+
+export function normalizeSiteSettings(raw = {}) {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_SITE_SETTINGS };
+  return {
+    id: 'default',
+    show_test_banner:
+      raw.show_test_banner !== undefined
+        ? Boolean(raw.show_test_banner)
+        : DEFAULT_SITE_SETTINGS.show_test_banner,
+    test_banner_text:
+      raw.test_banner_text !== undefined ? String(raw.test_banner_text ?? '') : '',
+    telegram_url:
+      raw.telegram_url !== undefined
+        ? String(raw.telegram_url ?? '').trim()
+        : DEFAULT_SITE_SETTINGS.telegram_url,
+    instagram_url:
+      raw.instagram_url !== undefined
+        ? String(raw.instagram_url ?? '').trim()
+        : DEFAULT_SITE_SETTINGS.instagram_url,
+    youtube_url:
+      raw.youtube_url !== undefined
+        ? String(raw.youtube_url ?? '').trim()
+        : DEFAULT_SITE_SETTINGS.youtube_url,
+    contact_phone:
+      raw.contact_phone !== undefined
+        ? String(raw.contact_phone ?? '').trim()
+        : DEFAULT_SITE_SETTINGS.contact_phone,
+    contact_email:
+      raw.contact_email !== undefined
+        ? String(raw.contact_email ?? '').trim()
+        : DEFAULT_SITE_SETTINGS.contact_email,
+    hero_title: raw.hero_title !== undefined ? String(raw.hero_title ?? '') : '',
+    hero_subtitle: raw.hero_subtitle !== undefined ? String(raw.hero_subtitle ?? '') : '',
+  };
+}
 
 export const DEFAULT_FAQ_ITEMS = [
   {
@@ -1338,19 +1388,40 @@ export const api = {
     const fetchByPhoneDigits = async (phDigits) => {
       const d = String(phDigits || '').replace(/\D/g, '').slice(-9);
       if (d.length !== 9) return;
+      // Telefon raqam bazada '+998 65 145 21 26', '+998651452126' yoki '65-145-21-26'
+      // ko'rinishida bo'lishi mumkin — shuning uchun '%21%26%' pattern bilan barcha formatlarni ushlaymiz!
+      const pattern = `%${d.slice(-4, -2)}%${d.slice(-2)}%`;
+      let matchedRemote = false;
       try {
         const { data } = await supabase
           .from('profiles')
           .select('*')
-          .ilike('phone', `%${d.slice(-4)}`)
+          .ilike('phone', pattern)
           .order('created_at', { ascending: true })
-          .limit(25);
+          .limit(50);
         if (Array.isArray(data)) {
           data.forEach((row) => {
             if (row?.phone && row.phone.replace(/\D/g, '').slice(-9) === d) {
+              matchedRemote = true;
               addCandidate(row);
             }
           });
+        }
+        // Qo'shimcha kafolat: agar pattern orqali topilmasa, barcha telefonli qatorlardan aniq raqam bo'yicha qidirish
+        if (!matchedRemote) {
+          const { data: allWithPhone } = await supabase
+            .from('profiles')
+            .select('*')
+            .not('phone', 'is', null)
+            .order('created_at', { ascending: true })
+            .limit(500);
+          if (Array.isArray(allWithPhone)) {
+            allWithPhone.forEach((row) => {
+              if (row?.phone && row.phone.replace(/\D/g, '').slice(-9) === d) {
+                addCandidate(row);
+              }
+            });
+          }
         }
       } catch {
         /* ignore */
@@ -2217,6 +2288,58 @@ export const api = {
       window.dispatchEvent(new Event('imtiyo_notifications_changed'));
     }
     return true;
+  },
+
+  // --- GLOBAL SITE SETTINGS (Admin Panel -> Sozlamalar) ---
+  getSiteSettingsSync() {
+    const local = readLocal(STORAGE_KEYS.SITE_SETTINGS, null);
+    return normalizeSiteSettings(local || DEFAULT_SITE_SETTINGS);
+  },
+
+  async getSiteSettings(force = false) {
+    return cachedRequest(
+      'site_settings',
+      async () => {
+        const local = readLocal(STORAGE_KEYS.SITE_SETTINGS, null);
+        try {
+          const { data, error } = await supabase
+            .from('site_settings')
+            .select('*')
+            .eq('id', 'default')
+            .maybeSingle();
+          if (!error && data) {
+            const normalized = normalizeSiteSettings(data);
+            writeLocal(STORAGE_KEYS.SITE_SETTINGS, normalized);
+            return normalized;
+          }
+        } catch {
+          /* fallback to local */
+        }
+        return normalizeSiteSettings(local || DEFAULT_SITE_SETTINGS);
+      },
+      force
+    );
+  },
+
+  async saveSiteSettings(nextSettings = {}) {
+    const normalized = {
+      ...normalizeSiteSettings(nextSettings),
+      id: 'default',
+      updated_at: new Date().toISOString(),
+    };
+    writeLocal(STORAGE_KEYS.SITE_SETTINGS, normalized);
+    setCached('site_settings', normalized);
+
+    try {
+      await supabase.from('site_settings').upsert(normalized, { onConflict: 'id' });
+    } catch {
+      /* localStorage fallback remains active */
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('imtiyo_site_settings_changed'));
+    }
+    return normalized;
   },
 };
 

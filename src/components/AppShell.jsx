@@ -15,6 +15,7 @@ import {
   Mail,
   MapPin,
   Megaphone,
+  Phone,
   Search,
   Send,
   Settings,
@@ -25,6 +26,7 @@ import {
   Upload,
   User,
   X,
+  Youtube,
 } from 'lucide-react';
 import Logo from '@/components/Logo';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
@@ -36,6 +38,11 @@ import MobileBottomDock from '@/components/MobileBottomDock';
 import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { useScrollLock } from '@/lib/useScrollLock';
+import {
+  formatTelegramHandle,
+  normalizeSocialUrl,
+  useSiteSettings,
+} from '@/lib/useSiteSettings';
 import { api } from '@/services/api';
 import { brands as sampleBrands, offers as sampleOffers } from '@/data/mockData';
 import { cn } from '@/lib/utils';
@@ -75,6 +82,7 @@ export default function AppShell({
   const navigate = useNavigate();
   const { t, lang } = useLang();
   const { profile, signOut } = useStudent();
+  const siteSettings = useSiteSettings();
 
   const [allBrands, setAllBrands] = useState([]);
   const [allOffers, setAllOffers] = useState([]);
@@ -1151,21 +1159,41 @@ export default function AppShell({
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
                     <span>{t('footer.city')}</span>
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 shrink-0 text-white/50" />
-                    <span>info@imtiyo.uz</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Send className="h-4 w-4 shrink-0 text-white/50" />
-                    <a
-                      href="https://t.me/imtiyosupport_bot"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-white hover:underline"
-                    >
-                      @imtiyosupport_bot
-                    </a>
-                  </li>
+                  {siteSettings.contact_phone && (
+                    <li className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 shrink-0 text-white/50" />
+                      <a
+                        href={`tel:${siteSettings.contact_phone.replace(/[^\d+]/g, '')}`}
+                        className="hover:text-white hover:underline"
+                      >
+                        {siteSettings.contact_phone}
+                      </a>
+                    </li>
+                  )}
+                  {siteSettings.contact_email && (
+                    <li className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 shrink-0 text-white/50" />
+                      <a
+                        href={`mailto:${siteSettings.contact_email}`}
+                        className="hover:text-white hover:underline"
+                      >
+                        {siteSettings.contact_email}
+                      </a>
+                    </li>
+                  )}
+                  {siteSettings.telegram_url && (
+                    <li className="flex items-center gap-2">
+                      <Send className="h-4 w-4 shrink-0 text-white/50" />
+                      <a
+                        href={normalizeSocialUrl(siteSettings.telegram_url, 'telegram')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-white hover:underline"
+                      >
+                        {formatTelegramHandle(siteSettings.telegram_url)}
+                      </a>
+                    </li>
+                  )}
                 </ul>
               </div>
 
@@ -1243,21 +1271,39 @@ export default function AppShell({
             <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6 text-[12px] text-white/60">
               <p>{t('footer.rights')}</p>
               <div className="flex items-center gap-4">
-                <a
-                  href="https://t.me/imtiyosupport_bot"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-white/70 hover:text-white"
-                >
-                  <Send className="h-4 w-4" />
-                </a>
-                <a
-                  href="#instagram"
-                  onClick={(e) => e.preventDefault()}
-                  className="text-white/70 hover:text-white"
-                >
-                  <Instagram className="h-4 w-4" />
-                </a>
+                {siteSettings.telegram_url && (
+                  <a
+                    href={normalizeSocialUrl(siteSettings.telegram_url, 'telegram')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Telegram"
+                    className="text-white/70 transition-colors hover:text-white"
+                  >
+                    <Send className="h-4 w-4" />
+                  </a>
+                )}
+                {siteSettings.instagram_url && (
+                  <a
+                    href={normalizeSocialUrl(siteSettings.instagram_url, 'instagram')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Instagram"
+                    className="text-white/70 transition-colors hover:text-white"
+                  >
+                    <Instagram className="h-4 w-4" />
+                  </a>
+                )}
+                {siteSettings.youtube_url && (
+                  <a
+                    href={normalizeSocialUrl(siteSettings.youtube_url, 'youtube')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="YouTube"
+                    className="text-white/70 transition-colors hover:text-white"
+                  >
+                    <Youtube className="h-4 w-4" />
+                  </a>
+                )}
               </div>
             </div>
           </div>

@@ -428,15 +428,30 @@ export default function Welcome() {
         const found = await api.findProfile({ phone: cleanPhone });
         if (!found) throw new Error(t('welcome.errPhoneNotFound'));
 
-        const savedPhonePass = localStorage.getItem(`imtiyo_pwd_phone_${digits}`);
         const linkedEmail = String(found.email || '').trim().toLowerCase();
-        const linkedEmailPass = linkedEmail
-          ? localStorage.getItem(`imtiyo_pwd_${linkedEmail}`)
-          : '';
-        const dbPass = found.password || '';
-        const validPasswords = [savedPhonePass, dbPass, linkedEmailPass].filter(Boolean);
-        if (validPasswords.length === 0 || !validPasswords.includes(password)) {
-          throw new Error(t('welcome.errBadPhoneLogin'));
+        let authPassed = false;
+
+        // Agar bu telefon raqam email akkauntga ulangan bo'lsa, avval Supabase Auth orqali parolni tekshiramiz
+        if (linkedEmail) {
+          const { error: linkedAuthErr } = await supabase.auth.signInWithPassword({
+            email: linkedEmail,
+            password,
+          });
+          if (!linkedAuthErr) {
+            authPassed = true;
+          }
+        }
+
+        if (!authPassed) {
+          const savedPhonePass = localStorage.getItem(`imtiyo_pwd_phone_${digits}`);
+          const linkedEmailPass = linkedEmail
+            ? localStorage.getItem(`imtiyo_pwd_${linkedEmail}`)
+            : '';
+          const dbPass = found.password || '';
+          const validPasswords = [savedPhonePass, dbPass, linkedEmailPass].filter(Boolean);
+          if (validPasswords.length === 0 || !validPasswords.includes(password)) {
+            throw new Error(t('welcome.errBadPhoneLogin'));
+          }
         }
 
         await signIn({

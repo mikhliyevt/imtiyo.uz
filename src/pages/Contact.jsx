@@ -3,15 +3,23 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  Instagram,
   Mail,
   MessageCircle,
+  Phone,
   Send,
+  Youtube,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  formatTelegramHandle,
+  normalizeSocialUrl,
+  useSiteSettings,
+} from '@/lib/useSiteSettings';
 import { api } from '@/services/api';
 import { copyText } from '@/lib/deal';
 import { formatUzPhone } from '@/lib/formUtils';
@@ -21,6 +29,7 @@ export default function Contact() {
   const { t } = useLang();
   const { toast } = useToast();
   const { profile } = useStudent();
+  const siteSettings = useSiteSettings();
 
   const CONTACT_TYPES = [
     { id: 'suggestion', label: t('help.topicSuggestion') },
@@ -89,54 +98,112 @@ export default function Contact() {
               </p>
 
               <div className="mt-5 space-y-3">
-                <a
-                  href="https://t.me/imtiyosupport_bot"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/70 p-4 transition-all hover:border-[#1D6FF2] hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/70 dark:hover:border-sky-400"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#00A9FF]/15 text-[#0077CC] dark:text-sky-400">
-                      <MessageCircle className="h-5 w-5" />
+                {siteSettings.telegram_url && (
+                  <a
+                    href={normalizeSocialUrl(siteSettings.telegram_url, 'telegram')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/70 p-4 transition-all hover:border-[#1D6FF2] hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/70 dark:hover:border-sky-400"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#00A9FF]/15 text-[#0077CC] dark:text-sky-400">
+                        <MessageCircle className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          {t('help.telegramSupport')}
+                        </p>
+                        <p className="truncate text-[13.5px] font-extrabold text-[#08123A] group-hover:text-[#1D6FF2] dark:text-white dark:group-hover:text-sky-400">
+                          {formatTelegramHandle(siteSettings.telegram_url)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        {t('help.telegramSupport')}
-                      </p>
-                      <p className="text-[13.5px] font-extrabold text-[#08123A] group-hover:text-[#1D6FF2] dark:text-white dark:group-hover:text-sky-400">
-                        @imtiyosupport_bot
-                      </p>
-                    </div>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-[#1D6FF2]" />
-                </a>
+                    <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-[#1D6FF2]" />
+                  </a>
+                )}
 
-                <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/70">
-                  <a href="mailto:support@imtiyo.uz" className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#002D96]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-400">
-                      <Mail className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        {t('help.emailLabel')}
-                      </p>
-                      <p className="truncate text-[13.5px] font-extrabold text-[#08123A] hover:text-[#1D6FF2] dark:text-white">
-                        support@imtiyo.uz
-                      </p>
+                {siteSettings.contact_phone && (
+                  <a
+                    href={`tel:${siteSettings.contact_phone.replace(/[^\d+]/g, '')}`}
+                    className="group flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/70 p-4 transition-all hover:border-[#1D6FF2] hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/70 dark:hover:border-sky-400"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                        <Phone className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          {t('help.hotline')}
+                        </p>
+                        <p className="truncate text-[13.5px] font-extrabold text-[#08123A] group-hover:text-[#1D6FF2] dark:text-white">
+                          {siteSettings.contact_phone}
+                        </p>
+                      </div>
                     </div>
                   </a>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await copyText('support@imtiyo.uz');
-                      toast({ title: t('contact.emailCopied'), description: 'support@imtiyo.uz' });
-                    }}
-                    title={t('common.copy')}
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[#002D96] shadow-sm hover:bg-slate-100 dark:bg-slate-700 dark:text-sky-300"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                )}
+
+                {siteSettings.contact_email && (
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/70">
+                    <a
+                      href={`mailto:${siteSettings.contact_email}`}
+                      className="flex min-w-0 items-center gap-3"
+                    >
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#002D96]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-400">
+                        <Mail className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          {t('help.emailLabel')}
+                        </p>
+                        <p className="truncate text-[13.5px] font-extrabold text-[#08123A] hover:text-[#1D6FF2] dark:text-white">
+                          {siteSettings.contact_email}
+                        </p>
+                      </div>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await copyText(siteSettings.contact_email);
+                        toast({
+                          title: t('contact.emailCopied'),
+                          description: siteSettings.contact_email,
+                        });
+                      }}
+                      title={t('common.copy')}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[#002D96] shadow-sm hover:bg-slate-100 dark:bg-slate-700 dark:text-sky-300"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {(siteSettings.instagram_url || siteSettings.youtube_url) && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {siteSettings.instagram_url && (
+                      <a
+                        href={normalizeSocialUrl(siteSettings.instagram_url, 'instagram')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-[12px] font-extrabold text-[#08123A] hover:border-pink-400 hover:text-pink-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <Instagram className="h-4 w-4 text-pink-500" />
+                        <span>Instagram</span>
+                      </a>
+                    )}
+                    {siteSettings.youtube_url && (
+                      <a
+                        href={normalizeSocialUrl(siteSettings.youtube_url, 'youtube')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-[12px] font-extrabold text-[#08123A] hover:border-red-400 hover:text-red-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <Youtube className="h-4 w-4 text-red-500" />
+                        <span>YouTube</span>
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

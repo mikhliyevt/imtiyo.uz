@@ -3,16 +3,23 @@ import {
   CheckCircle2,
   ChevronDown,
   HelpCircle,
+  Instagram,
   Mail,
   MessageSquare,
   Phone,
   Send,
+  Youtube,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { Button } from '@/components/ui/button';
 import { useLang } from '@/lib/LanguageContext';
 import { useStudent } from '@/lib/StudentContext';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  formatTelegramHandle,
+  normalizeSocialUrl,
+  useSiteSettings,
+} from '@/lib/useSiteSettings';
 import { api, DEFAULT_FAQ_ITEMS } from '@/services/api';
 import { cn } from '@/lib/utils';
 
@@ -105,6 +112,7 @@ export default function Help() {
   const { t, lang } = useLang();
   const { profile } = useStudent();
   const { toast } = useToast();
+  const siteSettings = useSiteSettings();
   const [openIndex, setOpenIndex] = useState(0);
 
   const [category, setCategory] = useState('help');
@@ -227,34 +235,73 @@ export default function Help() {
             </p>
 
             <div className="space-y-3 pt-3 text-[13px]">
-              <a
-                href="https://t.me/imtiyosupport_bot"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 rounded-2xl bg-white/15 px-4 py-3 font-bold backdrop-blur-md transition-colors hover:bg-white/25"
-              >
-                <Send className="h-4 w-4 shrink-0" />
-                <div>
-                  <p className="text-[11px] text-white/75">{t('help.telegramSupport')}</p>
-                  <p>@imtiyosupport_bot</p>
-                </div>
-              </a>
+              {siteSettings.telegram_url && (
+                <a
+                  href={normalizeSocialUrl(siteSettings.telegram_url, 'telegram')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 rounded-2xl bg-white/15 px-4 py-3 font-bold backdrop-blur-md transition-colors hover:bg-white/25"
+                >
+                  <Send className="h-4 w-4 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-white/75">{t('help.telegramSupport')}</p>
+                    <p className="truncate">{formatTelegramHandle(siteSettings.telegram_url)}</p>
+                  </div>
+                </a>
+              )}
 
-              <div className="flex items-center gap-3 rounded-2xl bg-white/15 px-4 py-3 font-bold backdrop-blur-md">
-                <Phone className="h-4 w-4 shrink-0" />
-                <div>
-                  <p className="text-[11px] text-white/75">{t('help.hotline')}</p>
-                  <p>+998 (71) 200-00-00</p>
-                </div>
-              </div>
+              {siteSettings.contact_phone && (
+                <a
+                  href={`tel:${siteSettings.contact_phone.replace(/[^\d+]/g, '')}`}
+                  className="flex items-center gap-3 rounded-2xl bg-white/15 px-4 py-3 font-bold backdrop-blur-md transition-colors hover:bg-white/25"
+                >
+                  <Phone className="h-4 w-4 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-white/75">{t('help.hotline')}</p>
+                    <p className="truncate">{siteSettings.contact_phone}</p>
+                  </div>
+                </a>
+              )}
 
-              <div className="flex items-center gap-3 rounded-2xl bg-white/15 px-4 py-3 font-bold backdrop-blur-md">
-                <Mail className="h-4 w-4 shrink-0" />
-                <div>
-                  <p className="text-[11px] text-white/75">{t('help.emailLabel')}</p>
-                  <p>info@imtiyo.uz</p>
+              {siteSettings.contact_email && (
+                <a
+                  href={`mailto:${siteSettings.contact_email}`}
+                  className="flex items-center gap-3 rounded-2xl bg-white/15 px-4 py-3 font-bold backdrop-blur-md transition-colors hover:bg-white/25"
+                >
+                  <Mail className="h-4 w-4 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-white/75">{t('help.emailLabel')}</p>
+                    <p className="truncate">{siteSettings.contact_email}</p>
+                  </div>
+                </a>
+              )}
+
+              {(siteSettings.instagram_url || siteSettings.youtube_url) && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {siteSettings.instagram_url && (
+                    <a
+                      href={normalizeSocialUrl(siteSettings.instagram_url, 'instagram')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/15 px-3 py-2.5 text-[12px] font-bold backdrop-blur-md transition-colors hover:bg-white/25"
+                    >
+                      <Instagram className="h-4 w-4" />
+                      <span>Instagram</span>
+                    </a>
+                  )}
+                  {siteSettings.youtube_url && (
+                    <a
+                      href={normalizeSocialUrl(siteSettings.youtube_url, 'youtube')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/15 px-3 py-2.5 text-[12px] font-bold backdrop-blur-md transition-colors hover:bg-white/25"
+                    >
+                      <Youtube className="h-4 w-4" />
+                      <span>YouTube</span>
+                    </a>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           </div>
 

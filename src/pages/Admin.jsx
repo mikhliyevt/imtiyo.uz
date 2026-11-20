@@ -14,10 +14,13 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  Globe,
+  Instagram,
   KeyRound,
   Layers,
   Loader2,
   LogOut,
+  Mail,
   MapPin,
   Megaphone,
   Menu,
@@ -25,12 +28,14 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Phone,
   Plus,
   QrCode,
   RotateCcw,
   Save,
   Search,
   Send,
+  Settings,
   ShieldCheck,
   Smartphone,
   Store,
@@ -38,9 +43,11 @@ import {
   Tag,
   Ticket,
   Trash2,
+  Type,
   UserPlus,
   Users,
   X,
+  Youtube,
 } from 'lucide-react';
 import BrandForm from '@/components/admin/BrandForm';
 import OfferForm from '@/components/admin/OfferForm';
@@ -62,7 +69,9 @@ import {
   api,
   COURSE_OPTIONS,
   DEFAULT_CATEGORIES,
+  DEFAULT_SITE_SETTINGS,
   normalizeCourse,
+  normalizeSiteSettings,
 } from '@/services/api';
 import { localizedTitle } from '@/lib/deal';
 import { cn } from '@/lib/utils';
@@ -79,6 +88,7 @@ const ALL_SECTIONS = [
   { id: 'messages', slug: 'xabarlar', label: 'Xabarlar', icon: MessageSquare },
   { id: 'notifications', slug: 'bildirishnomalar', label: 'Bildirishnomalar', icon: Megaphone },
   { id: 'admins', slug: 'adminlar', label: 'Adminlar va Huquqlar', icon: KeyRound, superOnly: true },
+  { id: 'settings', slug: 'sozlamalar', label: 'Sozlamalar', icon: Settings },
 ];
 
 const STUDENT_TABS = [
@@ -204,6 +214,19 @@ function parseAdminPathname(pathname) {
     };
   }
 
+  if (seg1 === 'sozlamalar' || seg1 === 'settings') {
+    return {
+      section: 'settings',
+      studentTab: 'pending',
+      hasExplicitStudentTab: false,
+      selectedBrandId: null,
+      showBrandForm: false,
+      editBrandMode: false,
+      uniViewMode: 'all',
+      hasExplicitUniTab: false,
+    };
+  }
+
   if (seg1 === 'adminlar' || seg1 === 'admins') {
     return {
       section: 'admins',
@@ -246,6 +269,7 @@ function normalizeAdminSession(rawSession) {
         'messages',
         'notifications',
         'admins',
+        'settings',
       ]
     : ['stats', 'students'];
   return {
@@ -328,9 +352,15 @@ export default function Admin() {
   const [brands, setBrands] = useState([]);
   const [brandSearch, setBrandSearch] = useState('');
   const [offers, setOffers] = useState([]);
+  const [allOffers, setAllOffers] = useState([]);
   const [allOffersCount, setAllOffersCount] = useState(0);
   const [brandFormDirty, setBrandFormDirty] = useState(false);
   const [offerFormDirty, setOfferFormDirty] = useState(false);
+
+  // Global sayt sozlamalari (Admin -> Sozlamalar)
+  const [siteSettings, setSiteSettings] = useState(() => api.getSiteSettingsSync());
+  const [savedSiteSettings, setSavedSiteSettings] = useState(() => api.getSiteSettingsSync());
+  const [savingSiteSettings, setSavingSiteSettings] = useState(false);
 
   // Kategoriyalar
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES || []);
@@ -489,6 +519,13 @@ export default function Admin() {
     [notifTitle, notifMessage]
   );
 
+  const isSiteSettingsDirty = useMemo(() => {
+    return (
+      JSON.stringify(normalizeSiteSettings(siteSettings)) !==
+      JSON.stringify(normalizeSiteSettings(savedSiteSettings))
+    );
+  }, [siteSettings, savedSiteSettings]);
+
   const hasUnsavedChanges =
     brandFormDirty ||
     offerFormDirty ||
@@ -499,6 +536,7 @@ export default function Admin() {
     isAdminPermsDirty ||
     isMessagesDirty ||
     isNotifFormDirty ||
+    isSiteSettingsDirty ||
     isStudentModalDirty;
 
   // Browser tab refresh / close guard when dirty
@@ -532,8 +570,9 @@ export default function Admin() {
     setMsgDrafts({});
     setNotifTitle('');
     setNotifMessage('');
+    setSiteSettings(savedSiteSettings);
     setSelectedStudent(null);
-  }, []);
+  }, [savedSiteSettings]);
 
   // Safe navigation wrapper (always uses push navigation so browser Back steps back 1 level!)
   const requestNavigation = useCallback(
@@ -647,28 +686,34 @@ export default function Admin() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [pList, bList, oList, rList, uList, aList, cList, mList, nList] = await Promise.all([
-        api.listProfiles ? api.listProfiles().catch(() => []) : Promise.resolve([]),
-        api.listBrands ? api.listBrands(true).catch(() => []) : Promise.resolve([]),
-        api.listAllOffers ? api.listAllOffers(true).catch(() => []) : Promise.resolve([]),
-        api.listRedemptions ? api.listRedemptions().catch(() => []) : Promise.resolve([]),
-        api.listUniversitiesAdmin
-          ? api.listUniversitiesAdmin().catch(() => [])
-          : Promise.resolve([]),
-        api.listAdmins ? api.listAdmins().catch(() => []) : Promise.resolve([]),
-        api.listCategories
-          ? api.listCategories(true).catch(() => DEFAULT_CATEGORIES)
-          : Promise.resolve(DEFAULT_CATEGORIES),
-        api.listSupportMessages
-          ? api.listSupportMessages().catch(() => [])
-          : Promise.resolve([]),
-        api.listBroadcastNotifications
-          ? api.listBroadcastNotifications().catch(() => [])
-          : Promise.resolve([]),
-      ]);
+      const [pList, bList, oList, rList, uList, aList, cList, mList, nList, sData] =
+        await Promise.all([
+          api.listProfiles ? api.listProfiles().catch(() => []) : Promise.resolve([]),
+          api.listBrands ? api.listBrands(true).catch(() => []) : Promise.resolve([]),
+          api.listAllOffers ? api.listAllOffers(true).catch(() => []) : Promise.resolve([]),
+          api.listRedemptions ? api.listRedemptions().catch(() => []) : Promise.resolve([]),
+          api.listUniversitiesAdmin
+            ? api.listUniversitiesAdmin().catch(() => [])
+            : Promise.resolve([]),
+          api.listAdmins ? api.listAdmins().catch(() => []) : Promise.resolve([]),
+          api.listCategories
+            ? api.listCategories(true).catch(() => DEFAULT_CATEGORIES)
+            : Promise.resolve(DEFAULT_CATEGORIES),
+          api.listSupportMessages
+            ? api.listSupportMessages().catch(() => [])
+            : Promise.resolve([]),
+          api.listBroadcastNotifications
+            ? api.listBroadcastNotifications().catch(() => [])
+            : Promise.resolve([]),
+          api.getSiteSettings
+            ? api.getSiteSettings(true).catch(() => DEFAULT_SITE_SETTINGS)
+            : Promise.resolve(DEFAULT_SITE_SETTINGS),
+        ]);
       setProfiles(Array.isArray(pList) ? pList : []);
       setBrands(Array.isArray(bList) ? bList : []);
-      setAllOffersCount(Array.isArray(oList) ? oList.length : 0);
+      const validOffers = Array.isArray(oList) ? oList : [];
+      setAllOffers(validOffers);
+      setAllOffersCount(validOffers.length);
       setAllRedemptions(Array.isArray(rList) ? rList : []);
       setUniversities(Array.isArray(uList) ? uList.filter(Boolean) : []);
       setAdmins(Array.isArray(aList) ? aList : []);
@@ -677,6 +722,9 @@ export default function Admin() {
       setSavedCategoriesSnapshot(cats.map((c) => c.id).join(','));
       setSupportMessages(Array.isArray(mList) ? mList : []);
       setBroadcastNotifications(Array.isArray(nList) ? nList : []);
+      const normSettings = normalizeSiteSettings(sData || DEFAULT_SITE_SETTINGS);
+      setSiteSettings(normSettings);
+      setSavedSiteSettings(normSettings);
     } finally {
       setLoading(false);
     }
@@ -1282,6 +1330,67 @@ export default function Admin() {
     return broadcastNotifications.filter((n) => (n.audience || 'all') === notifFilterAudience);
   }, [broadcastNotifications, notifFilterAudience]);
 
+  // Kategoriyalar bo'yicha faol brendlar va faol chegirmalar hisoblagichi (avtomatik yangilanadi)
+  const categoryStats = useMemo(() => {
+    const activeBrands = brands.filter((b) => b && b.active !== false);
+    const activeOffers = allOffers.filter((o) => o && o.active !== false);
+    const total = {
+      brandCount: activeBrands.length,
+      offerCount: activeOffers.length,
+    };
+
+    const byCategory = {};
+    categories.forEach((cat) => {
+      if (!cat?.id) return;
+      if (cat.id === 'all') {
+        byCategory[cat.id] = total;
+        return;
+      }
+      const matchedBrands =
+        cat.id === 'new'
+          ? activeBrands.filter((b) => Array.isArray(b.sections) && b.sections.includes('new'))
+          : activeBrands.filter(
+              (b) =>
+                b.category === cat.id ||
+                (Array.isArray(b.categories) && b.categories.includes(cat.id))
+            );
+      const brandIdSet = new Set();
+      matchedBrands.forEach((b) => {
+        if (b.id) brandIdSet.add(String(b.id));
+        if (b.recordId) brandIdSet.add(String(b.recordId));
+      });
+      const matchedOffersCount = activeOffers.filter((o) =>
+        brandIdSet.has(String(o.brand_id))
+      ).length;
+      byCategory[cat.id] = {
+        brandCount: matchedBrands.length,
+        offerCount: matchedOffersCount,
+      };
+    });
+
+    return { total, byCategory };
+  }, [brands, allOffers, categories]);
+
+  const handleSaveSiteSettings = async (e) => {
+    e.preventDefault();
+    if (!isSiteSettingsDirty) return;
+    setSavingSiteSettings(true);
+    try {
+      const saved = await api.saveSiteSettings(siteSettings);
+      const normalized = normalizeSiteSettings(saved);
+      setSiteSettings(normalized);
+      setSavedSiteSettings(normalized);
+      toast({
+        title: 'Sozlamalar muvaffaqiyatli saqlandi!',
+        description: 'O‘zgarishlar sayt va admin panelda darhol kuchga kirdi.',
+      });
+    } catch {
+      toast({ title: 'Sozlamalarni saqlashda xatolik', variant: 'destructive' });
+    } finally {
+      setSavingSiteSettings(false);
+    }
+  };
+
   const selectedStudentDeals = selectedStudent
     ? allRedemptions.filter((r) => r.student_name === selectedStudent.name)
     : [];
@@ -1323,8 +1432,8 @@ export default function Admin() {
             drawerOpen ? 'translate-x-0' : '-translate-x-full'
           )}
         >
-          <div>
-            <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-3.5 dark:border-slate-800">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="mb-4 flex shrink-0 items-center justify-between border-b border-slate-100 pb-3.5 dark:border-slate-800">
               <Logo size="sm" />
               <button
                 type="button"
@@ -1334,7 +1443,7 @@ export default function Admin() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <nav className="space-y-1">
+            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
               {allowedSections.map((item) => {
                 const Icon = item.icon;
                 const active = effectiveSection === item.id;
@@ -1401,11 +1510,11 @@ export default function Admin() {
           sidebarCollapsed ? 'w-[76px]' : 'w-64'
         )}
       >
-        <div className="flex flex-col overflow-hidden p-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
           {/* Sidebar top logo + collapse button */}
           <div
             className={cn(
-              'mb-5 flex border-b border-slate-100 pb-3.5 dark:border-slate-800',
+              'mb-4 flex shrink-0 border-b border-slate-100 pb-3.5 dark:border-slate-800',
               sidebarCollapsed ? 'flex-col items-center gap-2.5' : 'items-center justify-between px-1'
             )}
           >
@@ -1425,7 +1534,7 @@ export default function Admin() {
             </button>
           </div>
 
-          <nav className="space-y-1.5">
+          <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {allowedSections.map((item) => {
               const Icon = item.icon;
               const active = effectiveSection === item.id;
@@ -2136,6 +2245,7 @@ export default function Admin() {
                                       const ok = await api.deleteOffer(offer.id);
                                       if (ok) {
                                         setOffers((list) => list.filter((o) => o.id !== offer.id));
+                                        setAllOffers((list) => list.filter((o) => o.id !== offer.id));
                                         setAllOffersCount((c) => Math.max(0, c - 1));
                                         toast({ title: 'Chegirma o‘chirildi' });
                                       }
@@ -2286,8 +2396,26 @@ export default function Admin() {
                 </div>
 
                 <ul className="space-y-2">
+                  {!categories.some((c) => c.id === 'all') && (
+                    <li className="flex items-center justify-between gap-2 rounded-2xl border border-[#1D6FF2]/25 bg-[#1D6FF2]/[0.05] px-3.5 py-2.5 dark:border-sky-500/30 dark:bg-sky-500/10">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <p className="text-[13px] font-extrabold text-[#002D96] dark:text-sky-300">
+                          Barchasi
+                        </p>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-0.5 text-[10.5px] font-extrabold text-[#002D96] shadow-xs dark:bg-slate-800 dark:text-sky-300">
+                          {categoryStats.total.brandCount} ta brend •{' '}
+                          {categoryStats.total.offerCount} ta chegirma
+                        </span>
+                      </div>
+                    </li>
+                  )}
                   {categories.map((cat, idx) => {
                     const IconComp = CATEGORY_ICON_MAP?.[cat.icon] || Tag;
+                    const counts = categoryStats.byCategory[cat.id] || {
+                      brandCount: 0,
+                      offerCount: 0,
+                    };
+                    const hasItems = counts.brandCount > 0 || counts.offerCount > 0;
                     return (
                       <li
                         key={cat.id || idx}
@@ -2297,9 +2425,25 @@ export default function Admin() {
                           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#002D96]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-400">
                             <IconComp className="h-4 w-4" />
                           </span>
-                          <p className="truncate text-[13px] font-bold text-[#08123A] dark:text-white">
-                            {cat.label_uz}
-                          </p>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="truncate text-[13px] font-bold text-[#08123A] dark:text-white">
+                                {cat.id === 'all' ? `${cat.label_uz} (Barchasi)` : cat.label_uz}
+                              </p>
+                              <span
+                                className={cn(
+                                  'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10.5px] font-extrabold',
+                                  cat.id === 'all'
+                                    ? 'bg-[#002D96]/10 text-[#002D96] dark:bg-sky-500/20 dark:text-sky-300'
+                                    : hasItems
+                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                      : 'bg-slate-200/70 text-slate-500 dark:bg-slate-700/70 dark:text-slate-400'
+                                )}
+                              >
+                                {counts.brandCount} ta brend • {counts.offerCount} ta chegirma
+                              </span>
+                            </div>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -3467,6 +3611,280 @@ export default function Admin() {
                 </ul>
               </div>
             </div>
+          )}
+
+          {/* 7. SOZLAMALAR (GLOBAL SAYT KONFIGURATSIYASI — 3 TA BLOK + SAQLASH TUGMASI) */}
+          {effectiveSection === 'settings' && (
+            <form onSubmit={handleSaveSiteSettings} className="space-y-5">
+              {/* 1-BLOK: OGOHLANTIRISH BANNERI (TEST REJIMI) */}
+              <div className="rounded-[26px] border border-slate-200/80 bg-white/95 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-[15.5px] font-extrabold text-[#08123A] dark:text-white">
+                        1. Ogohlantirish banneri (Test rejimi)
+                      </h3>
+                      <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                        Sayt va admin panel tepasidagi sariq ogohlantirish lentasini boshqarish
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* TOGGLE SWITCH: show_test_banner */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={Boolean(siteSettings.show_test_banner)}
+                    onClick={() =>
+                      setSiteSettings((prev) => ({
+                        ...prev,
+                        show_test_banner: !prev.show_test_banner,
+                      }))
+                    }
+                    className={cn(
+                      'inline-flex items-center gap-2.5 rounded-full border px-3.5 py-2 text-[12px] font-extrabold transition-all',
+                      siteSettings.show_test_banner
+                        ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300'
+                        : 'border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                    )}
+                  >
+                    <span>{siteSettings.show_test_banner ? 'Yoqilgan' : 'O‘chirilgan'}</span>
+                    <span
+                      className={cn(
+                        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                        siteSettings.show_test_banner
+                          ? 'bg-amber-500'
+                          : 'bg-slate-300 dark:bg-slate-600'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                          siteSettings.show_test_banner ? 'translate-x-4' : 'translate-x-0.5'
+                        )}
+                      />
+                    </span>
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-2.5">
+                  <label className="block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                    Banner matni
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.test_banner_text}
+                    onChange={(e) =>
+                      setSiteSettings((prev) => ({ ...prev, test_banner_text: e.target.value }))
+                    }
+                    placeholder="Diqqat: Sayt hozirda test rejimida ishlamoqda, hech qaysi aksiya va chegirmalar hozircha faol emas."
+                    className={cn(inputCls, 'w-full py-2.5')}
+                  />
+                  {siteSettings.show_test_banner ? (
+                    <div className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-3.5 py-2 text-[11.5px] font-bold text-white shadow-xs">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-100" />
+                      <span className="truncate">
+                        {siteSettings.test_banner_text.trim() ||
+                          'Diqqat: Sayt hozirda test rejimida ishlamoqda, hech qaysi aksiya va chegirmalar hozircha faol emas.'}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[11.5px] font-semibold text-slate-400">
+                      Saqlangach, sariq test rejimi banneri asosiy saytdan ham, admin paneldan ham butunlay olib tashlanadi.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* 2-BLOK: IJTIMOIY TARMOQLAR VA ALOQA */}
+              <div className="rounded-[26px] border border-slate-200/80 bg-white/95 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#1D6FF2]/10 text-[#002D96] dark:bg-sky-500/15 dark:text-sky-300">
+                    <Globe className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-[15.5px] font-extrabold text-[#08123A] dark:text-white">
+                      2. Ijtimoiy tarmoqlar va aloqa
+                    </h3>
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                      Footer va «Bog‘lanish» sahifasida avtomatik yangilanadi. Bo‘sh qoldirilgan tarmoqlar saytda ko‘rinmaydi.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3.5 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                      <Send className="h-3.5 w-3.5 text-[#0088CC]" />
+                      Telegram havola yoki @username
+                    </label>
+                    <input
+                      type="text"
+                      value={siteSettings.telegram_url}
+                      onChange={(e) =>
+                        setSiteSettings((prev) => ({ ...prev, telegram_url: e.target.value }))
+                      }
+                      placeholder="https://t.me/imtiyosupport_bot"
+                      className={cn(inputCls, 'w-full py-2.5')}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                      <Instagram className="h-3.5 w-3.5 text-pink-500" />
+                      Instagram havola
+                    </label>
+                    <input
+                      type="text"
+                      value={siteSettings.instagram_url}
+                      onChange={(e) =>
+                        setSiteSettings((prev) => ({ ...prev, instagram_url: e.target.value }))
+                      }
+                      placeholder="https://instagram.com/imtiyo.uz"
+                      className={cn(inputCls, 'w-full py-2.5')}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                      <Youtube className="h-3.5 w-3.5 text-red-500" />
+                      YouTube havola
+                    </label>
+                    <input
+                      type="text"
+                      value={siteSettings.youtube_url}
+                      onChange={(e) =>
+                        setSiteSettings((prev) => ({ ...prev, youtube_url: e.target.value }))
+                      }
+                      placeholder="https://youtube.com/@imtiyo"
+                      className={cn(inputCls, 'w-full py-2.5')}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                      <Phone className="h-3.5 w-3.5 text-emerald-500" />
+                      Aloqa telefoni
+                    </label>
+                    <input
+                      type="text"
+                      value={siteSettings.contact_phone}
+                      onChange={(e) =>
+                        setSiteSettings((prev) => ({ ...prev, contact_phone: e.target.value }))
+                      }
+                      placeholder="+998 (71) 200-00-00"
+                      className={cn(inputCls, 'w-full py-2.5')}
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                      <Mail className="h-3.5 w-3.5 text-[#1D6FF2]" />
+                      Elektron pochta (Email)
+                    </label>
+                    <input
+                      type="email"
+                      value={siteSettings.contact_email}
+                      onChange={(e) =>
+                        setSiteSettings((prev) => ({ ...prev, contact_email: e.target.value }))
+                      }
+                      placeholder="info@imtiyo.uz"
+                      className={cn(inputCls, 'w-full py-2.5')}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 3-BLOK: SAYT ASOSIY MATNLARI (HERO TITLE & SUBTITLE) */}
+              <div className="rounded-[26px] border border-slate-200/80 bg-white/95 p-5 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">
+                    <Type className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-[15.5px] font-extrabold text-[#08123A] dark:text-white">
+                      3. Sayt asosiy matnlari
+                    </h3>
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                      Bosh sahifadagi asosiy sarlavha va qisqa tavsif (bo‘sh qoldirilsa standart matn ko‘rinadi)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3.5">
+                  <div>
+                    <label className="mb-1.5 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                      Bosh sahifa sarlavhasi (Hero Title)
+                    </label>
+                    <input
+                      type="text"
+                      value={siteSettings.hero_title}
+                      onChange={(e) =>
+                        setSiteSettings((prev) => ({ ...prev, hero_title: e.target.value }))
+                      }
+                      placeholder="Masalan: Talabalar uchun eksklyuziv chegirmalar"
+                      className={cn(inputCls, 'w-full py-2.5')}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[11.5px] font-bold text-slate-500 dark:text-slate-400">
+                      Qisqa tavsif (Hero Subtitle)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={siteSettings.hero_subtitle}
+                      onChange={(e) =>
+                        setSiteSettings((prev) => ({ ...prev, hero_subtitle: e.target.value }))
+                      }
+                      placeholder="Masalan: Eng so‘nggi talaba chegirmalari va imtiyozlarini o‘tkazib yubormang — har kuni yangilanadi!"
+                      className={cn(inputCls, 'w-full resize-none py-2.5')}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* PASTKI UMUMIY SAQLASH PANELI */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200/80 bg-white/95 px-5 py-4 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+                <p className="text-[12.5px] font-semibold text-slate-500 dark:text-slate-400">
+                  {isSiteSettingsDirty
+                    ? 'Saqlanmagan o‘zgarishlar mavjud — ularni tasdiqlash uchun «Saqlash» ni bosing.'
+                    : 'Barcha sozlamalar saqlangan.'}
+                </p>
+                <div className="flex items-center gap-2">
+                  {isSiteSettingsDirty && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setSiteSettings(savedSiteSettings)}
+                      className="h-10 rounded-full px-4 text-[12.5px] font-bold dark:border-slate-700 dark:text-slate-200"
+                    >
+                      Bekor qilish
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    disabled={savingSiteSettings || !isSiteSettingsDirty}
+                    className="h-10 rounded-full bg-gradient-to-r from-[#002D96] to-[#1D6FF2] px-6 text-[13px] font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {savingSiteSettings ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saqlanmoqda...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Saqlash
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </form>
           )}
         </main>
       </div>
